@@ -1,0 +1,37 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="brand" x1="150" y1="120" x2="880" y2="920" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6C9BFF"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+    <linearGradient id="tile" x1="120" y1="100" x2="900" y2="950" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#212C4A"/>
+      <stop offset="1" stop-color="#10141F"/>
+    </linearGradient>
+    <linearGradient id="sheen" x1="140" y1="120" x2="620" y2="600" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="13" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#tile)"/>
+  <rect x="64" y="64" width="896" height="896" rx="220" fill="url(#sheen)"/>
+  <rect x="80" y="80" width="864" height="864" rx="208" stroke="url(#brand)" stroke-opacity="0.55" stroke-width="12"/>
+
+  <g filter="url(#glow)" stroke="url(#brand)" stroke-width="72"
+     stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <!-- The G: an open arc that stops short of closing on the right. -->
+    <path d="M648 366 A200 200 0 1 0 706 512"/>
+    <!-- Crossbar of the G, doubling as the shaft of a conversion arrow. -->
+    <path d="M508 512 H676"/>
+    <!-- Arrowhead: long arms so it stays a chevron, not a filled wedge. -->
+    <path d="M636 412 L744 512 L636 612"/>
+  </g>
+</svg>

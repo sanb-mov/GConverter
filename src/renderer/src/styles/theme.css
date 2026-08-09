@@ -1,0 +1,216 @@
+/* ==========================================================================
+   GConverter — design tokens
+   A single dark-first palette with a signature indigo→violet accent.
+   ========================================================================== */
+
+:root {
+  /* Surfaces: a near-black base with progressively lighter planes. */
+  --bg-base: #0a0c11;
+  --bg-canvas: #0e1118;
+  --bg-surface: #141824;
+  --bg-elevated: #1a1f2e;
+  --bg-overlay: #1f2536;
+  --bg-input: #10141e;
+
+  /* Hairlines. Borders carry most of the structure in this UI. */
+  --border-subtle: #1e2434;
+  --border: #262d40;
+  --border-strong: #333c54;
+
+  /* Text */
+  --text-primary: #eef1f7;
+  --text-secondary: #a7b0c4;
+  --text-muted: #6f7994;
+  --text-faint: #4b5468;
+
+  /* Brand */
+  --accent: #5b8cff;
+  --accent-hover: #7aa2ff;
+  --accent-press: #4478f0;
+  --accent-soft: rgba(91, 140, 255, 0.14);
+  --accent-glow: rgba(91, 140, 255, 0.28);
+  --accent-2: #8b5cf6;
+  --gradient-brand: linear-gradient(135deg, #5b8cff 0%, #8b5cf6 100%);
+
+  /* Semantic */
+  --success: #22c77e;
+  --success-soft: rgba(34, 199, 126, 0.13);
+  --warning: #f0a742;
+  --warning-soft: rgba(240, 167, 66, 0.13);
+  --danger: #ff5f6d;
+  --danger-soft: rgba(255, 95, 109, 0.13);
+  --info: #4cc9f0;
+  --info-soft: rgba(76, 201, 240, 0.13);
+
+  /* Stream-type colour coding, used consistently everywhere. */
+  --video-hue: #5b8cff;
+  --audio-hue: #22c77e;
+  --subtitle-hue: #f0a742;
+  --data-hue: #8b5cf6;
+
+  /* Radii */
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-full: 999px;
+
+  /* Elevation */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-accent: 0 6px 24px rgba(91, 140, 255, 0.25);
+
+  /* Motion — discreet, never showy (spec §41). */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-fast: 120ms;
+  --t-base: 200ms;
+  --t-slow: 340ms;
+
+  /* Layout */
+  --sidebar-w: 232px;
+  --header-h: 64px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI',
+    Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'SF Mono', Consolas, 'Liberation Mono',
+    monospace;
+}
+
+/* "Midnight" — a cooler, deeper variant. */
+:root[data-theme='midnight'] {
+  --bg-base: #05070d;
+  --bg-canvas: #080b13;
+  --bg-surface: #0f1420;
+  --bg-elevated: #141a2a;
+  --bg-overlay: #1a2133;
+  --bg-input: #0b0f19;
+  --border-subtle: #161d2e;
+  --border: #1f2739;
+  --border-strong: #2b3450;
+}
+
+/* Light theme keeps the same semantics with inverted planes. */
+:root[data-theme='light'] {
+  --bg-base: #f4f6fa;
+  --bg-canvas: #eef1f7;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-overlay: #ffffff;
+  --bg-input: #f4f6fa;
+
+  --border-subtle: #e4e8f0;
+  --border: #d6dce8;
+  --border-strong: #b9c2d4;
+
+  --text-primary: #131722;
+  --text-secondary: #4a5468;
+  --text-muted: #6f7994;
+  --text-faint: #9aa3b8;
+
+  --accent-soft: rgba(91, 140, 255, 0.1);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --shadow-md: 0 4px 16px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 16px 48px rgba(16, 24, 40, 0.14);
+}
+
+/* ==========================================================================
+   Reset
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  /* The whole window is a drop target; never let the OS navigate away. */
+  user-select: none;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+/* Scrollbars: present but quiet. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--r-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+  background-clip: content-box;
+  border: 3px solid transparent;
+}
+
+::selection {
+  background: var(--accent-glow);
+  color: var(--text-primary);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

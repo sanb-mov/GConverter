@@ -1,0 +1,126 @@
+appId: com.gconverter.app
+productName: GConverter
+copyright: Copyright © 2026 GConverter
+
+directories:
+  output: dist
+  buildResources: build
+
+files:
+  - out/**/*
+  - package.json
+  - '!**/*.map'
+  - '!**/{.eslintrc,.editorconfig,.prettierrc}'
+
+# FFmpeg and FFprobe must stay outside the asar archive: they are native
+# executables and cannot be spawned from inside a packed archive. The
+# resolver rewrites app.asar → app.asar.unpacked to find them.
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+  - node_modules/ffprobe-static/**
+
+extraResources:
+  - from: docs/
+    to: docs/
+    filter: ['**/*.md']
+
+# ffprobe-static ships a binary for every platform (~335 MB in total).
+# Each target keeps only the one it can actually run.
+# ------------------------------- Windows -------------------------------
+win:
+  files:
+    - '!node_modules/ffprobe-static/bin/darwin/**'
+    - '!node_modules/ffprobe-static/bin/linux/**'
+    - '!node_modules/ffprobe-static/bin/win32/ia32/**'
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: ${productName} Setup ${version}.${ext}
+  fileAssociations:
+    - ext: mkv
+      description: Matroska Video
+      role: Editor
+    - ext: mp4
+      description: MPEG-4 Video
+      role: Editor
+    - ext: mov
+      description: QuickTime Movie
+      role: Editor
+    - ext: avi
+      description: AVI Video
+      role: Editor
+    - ext: webm
+      description: WebM Video
+      role: Editor
+    - ext: flac
+      description: FLAC Audio
+      role: Editor
+    - ext: wav
+      description: WAV Audio
+      role: Editor
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: GConverter
+  installerIcon: build/icon.ico
+  uninstallerIcon: build/icon.ico
+  installerHeaderIcon: build/icon.ico
+  deleteAppDataOnUninstall: false
+  runAfterFinish: true
+
+# -------------------------------- Linux --------------------------------
+linux:
+  files:
+    - '!node_modules/ffprobe-static/bin/darwin/**'
+    - '!node_modules/ffprobe-static/bin/win32/**'
+    - '!node_modules/ffprobe-static/bin/linux/ia32/**'
+  icon: build/icon.png
+  category: AudioVideo
+  synopsis: Convert anything. Keep everything.
+  description: >-
+    GConverter is a universal audio and video converter built on FFmpeg.
+    It detects when a conversion can be performed losslessly, explains
+    exactly what will happen to every stream, and never degrades quality
+    without asking.
+  target:
+    - target: AppImage
+      arch: [x64]
+    - target: deb
+      arch: [x64]
+  desktop:
+    entry:
+      MimeType: video/mp4;video/x-matroska;video/quicktime;video/x-msvideo;video/webm;audio/mpeg;audio/flac;audio/wav
+
+# -------------------------------- macOS --------------------------------
+mac:
+  files:
+    - '!node_modules/ffprobe-static/bin/linux/**'
+    - '!node_modules/ffprobe-static/bin/win32/**'
+  icon: build/icon.png
+  category: public.app-category.video
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  darkModeSupport: true
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+
+dmg:
+  artifactName: ${productName} ${version}.${ext}
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+# Publishing is deliberately unconfigured; releases are manual.
+publish: null
