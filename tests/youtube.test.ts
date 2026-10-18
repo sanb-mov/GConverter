@@ -174,6 +174,9 @@ describe('yt-dlp arguments', () => {
     expect(after(args, '--js-runtimes')).toBe('node:/opt/electron')
     expect(after(args, '--cookies-from-browser')).toBe('firefox')
     expect(args).toContain('--no-playlist')
+    // --print silences yt-dlp; these bring the progress lines back.
+    expect(args).toContain('--no-quiet')
+    expect(args).toContain('--progress')
   })
 
   it('leaves cookies out when no browser is chosen', () => {

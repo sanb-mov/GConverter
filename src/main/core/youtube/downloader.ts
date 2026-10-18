@@ -27,7 +27,9 @@ import {
   formatEtaSeconds,
   formatSpeed,
   isPostProcessingLine,
+  parseFFmpegStatus,
   parseFileLine,
+  parseFormatCount,
   parseInfo,
   parseProgressLine,
   type ArgContext
@@ -47,6 +49,11 @@ export interface DownloaderDeps {
   /** cookies.txt from the built-in YouTube window, or null when there is none. */
   getCookiesFile?: () => string | null
   maxConcurrent?: number
+  /**
+   * URL gate; YouTube-only by default. Tests swap it to reach a local
+   * server so real yt-dlp runs can be checked without the network.
+   */
+  normalizeUrl?: (input: string) => string | null
 }
 
 const VIDEO_FORMATS = ['mp4', 'mkv', 'webm']
@@ -71,6 +78,10 @@ export class YouTubeDownloader extends EventEmitter {
 
   private t(key: string): string {
     return translate(this.deps.getLang(), key)
+  }
+
+  private normalizeUrl(input: string): string | null {
+    return (this.deps.normalizeUrl ?? normalizeYouTubeUrl)(input)
   }
 
   private context(): ArgContext {
@@ -112,7 +123,7 @@ export class YouTubeDownloader extends EventEmitter {
    * error code survives the IPC boundary and the UI can offer the robot check.
    */
   async fetchInfo(input: string, cookiesBrowser: YouTubeRequest['cookiesBrowser']): Promise<YouTubeInfoResult> {
-    const url = normalizeYouTubeUrl(input)
+    const url = this.normalizeUrl(input)
     if (!url) return { ok: false, code: 'invalid', error: this.t('yt.invalidUrl') }
     if (!BROWSERS.includes(cookiesBrowser)) return { ok: false, code: 'invalid', error: 'Unsupported browser' }
 
@@ -179,7 +190,7 @@ export class YouTubeDownloader extends EventEmitter {
 
   /** Re-check everything the renderer sent; it is untrusted input. */
   private validate(input: YouTubeRequest): YouTubeRequest {
-    const url = normalizeYouTubeUrl(input.url)
+    const url = this.normalizeUrl(input.url)
     if (!url) throw new Error(this.t('yt.invalidUrl'))
     if (input.mode !== 'video' && input.mode !== 'audio') throw new Error('Invalid mode')
     if (!VIDEO_FORMATS.includes(input.videoFormat)) throw new Error('Invalid video format')
@@ -251,17 +262,36 @@ export class YouTubeDownloader extends EventEmitter {
     download.status = 'downloading'
     this.emitUpdate(download)
 
-    // Video mode downloads a video stream and an audio stream one after the other.
-    const expectedParts = download.request.mode === 'video' ? 2 : 1
+    const { sectionStart, sectionEnd } = download.request
+    // A fragment is fetched by ffmpeg in a single pass, whatever the formats.
+    const sectionLength =
+      sectionStart !== undefined && sectionEnd !== undefined ? sectionEnd - sectionStart : 0
+    // Corrected from yt-dlp's "Downloading N format(s): a+b" line.
+    let expectedParts = 1
     let finishedParts = 0
     let finalPath: string | undefined
     let stderr = ''
     let lastEmit = 0
 
+    /** Throttled: yt-dlp and ffmpeg can print dozens of lines a second. */
+    const emitProgress = (): void => {
+      const now = Date.now()
+      if (now - lastEmit > 250) {
+        lastEmit = now
+        this.emitUpdate(download)
+      }
+    }
+
     const onLine = (line: string): void => {
       const file = parseFileLine(line)
       if (file) {
         finalPath = file
+        return
+      }
+
+      const formats = parseFormatCount(line)
+      if (formats !== null && !sectionLength) {
+        expectedParts = formats
         return
       }
 
@@ -274,6 +304,8 @@ export class YouTubeDownloader extends EventEmitter {
         if (progress.status === 'finished') {
           finishedParts = Math.min(expectedParts, finishedParts + 1)
         }
+        // Fragments report through ffmpeg's status line instead (see stderr).
+        if (sectionLength) return
         const fraction =
           progress.status === 'finished'
             ? 0
@@ -283,12 +315,7 @@ export class YouTubeDownloader extends EventEmitter {
         download.percent = Math.min(99, ((finishedParts + fraction) / expectedParts) * 100)
         download.speed = formatSpeed(progress.speed)
         download.eta = formatEtaSeconds(progress.eta)
-        // Throttle: yt-dlp can print dozens of lines a second.
-        const now = Date.now()
-        if (now - lastEmit > 250) {
-          lastEmit = now
-          this.emitUpdate(download)
-        }
+        emitProgress()
         return
       }
 
@@ -312,6 +339,22 @@ export class YouTubeDownloader extends EventEmitter {
     child.stderr.setEncoding('utf-8')
     child.stderr.on('data', (chunk: string) => {
       stderr = (stderr + chunk).slice(-STDERR_LIMIT)
+      if (!sectionLength || download.status !== 'downloading') return
+
+      // ffmpeg redraws its status line with \r; the last one in the chunk is current.
+      const status = chunk
+        .split(/[\r\n]+/)
+        .map(parseFFmpegStatus)
+        .filter((s) => s !== null)
+        .pop()
+      if (!status) return
+      download.percent = Math.min(99, (status.time / sectionLength) * 100)
+      download.speed = status.speed ? `${status.speed}x` : undefined
+      download.eta =
+        status.speed && status.speed > 0
+          ? formatEtaSeconds(Math.max(0, sectionLength - status.time) / status.speed)
+          : undefined
+      emitProgress()
     })
 
     const finish = (code: number | null, spawnError?: Error): void => {

@@ -10,7 +10,7 @@ un fragmento) basado en yt-dlp.
 
 ![Electron](https://img.shields.io/badge/Electron-43-47848F)
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6)
-![Tests](https://img.shields.io/badge/tests-160%20pasando-22C77E)
+![Tests](https://img.shields.io/badge/tests-164%20pasando-22C77E)
 ![Idiomas](https://img.shields.io/badge/idiomas-ES%20%7C%20EN-5B8CFF)
 
 ---
@@ -100,15 +100,15 @@ reflejan al instante y los del proceso principal reinician la app sola.
 ```bash
 npm run build      # compila a out/ (sin empaquetar)
 npm run typecheck  # comprueba los tipos de los tres proyectos TS
-npm test           # ejecuta los 160 tests
+npm test           # ejecuta los 164 tests
 ```
 
 ### 5. Generar el instalador
 
 ```bash
-npm run dist:win     # Windows  → dist/GConverter Setup 1.1.0.exe   (NSIS)
-npm run dist:linux   # Linux    → dist/GConverter-1.1.0.AppImage + .deb
-npm run dist:mac     # macOS    → dist/GConverter 1.1.0.dmg         (x64 + arm64)
+npm run dist:win     # Windows  → dist/GConverter Setup 1.1.1.exe   (NSIS)
+npm run dist:linux   # Linux    → dist/GConverter-1.1.1.AppImage + .deb
+npm run dist:mac     # macOS    → dist/GConverter 1.1.1.dmg         (x64 + arm64)
 ```
 
 El resultado queda en la carpeta `dist/`. También se genera
@@ -274,7 +274,7 @@ pensada para humanos, así que es fiable entre versiones de FFmpeg.
 npm test
 ```
 
-160 tests en siete baterías. Las de integración, cola e imágenes ejecutan
+164 tests en ocho baterías. Las de integración, cola e imágenes ejecutan
 **conversiones reales con FFmpeg** sobre los archivos generados y vuelven a
 analizar la salida:
 
@@ -288,6 +288,7 @@ analizar la salida:
 - detección de hardware con verificación real
 - imágenes PNG → JPG/WebP/AVIF/BMP/TIFF/TGA/ICO/GIF, transparencia, tamaño y fotogramas de vídeo
 - argumentos de yt-dlp, fragmentos, validación de enlaces y de tiempos, cookies
+- progreso de descarga real con yt-dlp contra un servidor local (completa y fragmento)
 - cobertura de traducciones: falla si a un idioma le falta una clave
 
 ```bash

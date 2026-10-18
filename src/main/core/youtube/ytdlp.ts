@@ -130,8 +130,12 @@ export function buildDownloadArgs(request: YouTubeRequest, context: ArgContext):
     `download:${PROGRESS_MARK} %(progress.status)s|%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s`,
     '--print',
     `after_move:${FILE_MARK} %(filepath)s`,
-    // --print implies --simulate unless told otherwise.
+    // --print implies --simulate and --quiet. Undo both: quiet mode would
+    // hide the progress lines and the "Destination:"/"[Merger]" lines the
+    // download list relies on.
     '--no-simulate',
+    '--no-quiet',
+    '--progress',
     '-P',
     request.outputFolder,
     '-o',
@@ -257,6 +261,28 @@ export function parseProgressLine(line: string): ProgressLine | null {
     speed: num(speed),
     eta: num(eta)
   }
+}
+
+/**
+ * "[info] abc: Downloading 1 format(s): 137+140" → 2. Each format is
+ * downloaded separately, so this is how many progress runs to expect.
+ */
+export function parseFormatCount(line: string): number | null {
+  const match = /Downloading \d+ format\(s\): (\S+)/.exec(line)
+  return match ? match[1].split('+').length : null
+}
+
+/**
+ * Fragment downloads go through ffmpeg, which reports progress only on its
+ * own status line: "size= 1024kB time=00:01:05.40 bitrate=… speed=2.1x".
+ * Returns seconds written and the speed multiplier.
+ */
+export function parseFFmpegStatus(line: string): { time: number; speed?: number } | null {
+  const time = /time=\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(line)
+  if (!time) return null
+  const seconds = Number(time[1]) * 3600 + Number(time[2]) * 60 + Number(time[3])
+  const speed = /speed=\s*([\d.]+)x/.exec(line)
+  return { time: seconds, speed: speed ? Number(speed[1]) : undefined }
 }
 
 /** The final path printed after yt-dlp moves the finished file into place. */
