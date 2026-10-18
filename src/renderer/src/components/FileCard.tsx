@@ -1,4 +1,4 @@
-import { AlertCircle, Film, FolderOpen, Music, Search, Trash2 } from 'lucide-react'
+import { AlertCircle, Film, FolderOpen, ImageIcon, Music, Search, Trash2 } from 'lucide-react'
 import type { MediaFile } from '@shared/models'
 import {
   formatBytes,
@@ -26,7 +26,7 @@ export function FileCard({
 }): React.JSX.Element {
   const video = file.primaryVideo
   const audio = file.primaryAudio
-  const kind = file.error ? 'error' : file.hasVideo ? 'video' : 'audio'
+  const kind = file.error ? 'error' : file.isImage ? 'image' : file.hasVideo ? 'video' : 'audio'
 
   return (
     <div
@@ -39,7 +39,15 @@ export function FileCard({
       }}
     >
       <div className={`file-thumb ${kind}`}>
-        {file.error ? <AlertCircle size={21} /> : kind === 'video' ? <Film size={21} /> : <Music size={21} />}
+        {file.error ? (
+          <AlertCircle size={21} />
+        ) : kind === 'image' ? (
+          <ImageIcon size={21} />
+        ) : kind === 'video' ? (
+          <Film size={21} />
+        ) : (
+          <Music size={21} />
+        )}
       </div>
 
       <div className="file-info">
@@ -62,10 +70,10 @@ export function FileCard({
               </span>
             )}
             {video && <span>{video.codec.toUpperCase()}</span>}
-            {video?.fps && <span>{formatFps(video.fps)}</span>}
+            {video?.fps && !file.isImage && <span>{formatFps(video.fps)}</span>}
             {audio && <span>{audio.codec.toUpperCase()}</span>}
             {!video && audio?.sampleRate && <span>{(audio.sampleRate / 1000).toFixed(1)} kHz</span>}
-            <span>{formatDuration(file.duration)}</span>
+            {!file.isImage && <span>{formatDuration(file.duration)}</span>}
             <span>{formatBytes(file.size)}</span>
           </div>
         )}

@@ -19,9 +19,13 @@ export interface ContainerDef {
   id: string
   label: string
   extensions: string[]
-  kind: 'video' | 'audio'
+  kind: 'video' | 'audio' | 'image'
   /** ffmpeg muxer name when it differs from the extension. */
   muxer?: string
+  /** Image formats only: whether transparency survives the conversion. */
+  supportsAlpha?: boolean
+  /** Image formats only: largest width/height the format can store. */
+  maxDimension?: number
   /** Codecs that can be stored without re-encoding. '*' = anything. */
   videoCodecs: string[]
   audioCodecs: string[]
@@ -343,8 +347,47 @@ export const CONTAINERS: ContainerDef[] = [
     supportsAttachments: false,
     supportsFaststart: false,
     description: 'DTS Coherent Acoustics surround stream.'
-  }
+  },
+
+  /* ---------------------------- image ---------------------------- */
+  image('jpg', 'JPG', ['jpg', 'jpeg'], 'mjpeg', false, 'image2', 'Universal photo format. Small files, no transparency.'),
+  image('png', 'PNG', ['png'], 'png', true, 'image2', 'Lossless with transparency. Ideal for graphics and screenshots.'),
+  image('webp', 'WebP', ['webp'], 'webp', true, 'webp', 'Modern web format. Much smaller than JPG at the same quality.'),
+  image('avif', 'AVIF', ['avif'], 'av1', false, 'avif', 'Next-generation format based on AV1. Smallest files.'),
+  image('bmp', 'BMP', ['bmp'], 'bmp', true, 'image2', 'Uncompressed Windows bitmap. Large but universally readable.'),
+  image('tiff', 'TIFF', ['tif', 'tiff'], 'tiff', true, 'image2', 'Lossless format used in print and photography.'),
+  image('ico', 'ICO', ['ico'], 'png', true, 'ico', 'Windows icon. Scaled down to 256 × 256 when larger.', 256),
+  image('tga', 'TGA', ['tga'], 'targa', true, 'image2', 'Truevision Targa, common in games and 3D tools.')
 ]
+
+/** Build an image "container": one still frame in a single codec. */
+function image(
+  id: string,
+  label: string,
+  extensions: string[],
+  codec: string,
+  supportsAlpha: boolean,
+  muxer: string,
+  description: string,
+  maxDimension?: number
+): ContainerDef {
+  return {
+    id,
+    label,
+    extensions,
+    kind: 'image',
+    muxer,
+    videoCodecs: [codec],
+    audioCodecs: [],
+    subtitleCodecs: [],
+    supportsChapters: false,
+    supportsAttachments: false,
+    supportsFaststart: false,
+    supportsAlpha,
+    maxDimension,
+    description
+  }
+}
 
 export const CONTAINER_BY_ID = new Map(CONTAINERS.map((c) => [c.id, c]))
 
@@ -925,7 +968,39 @@ export const AUDIO_CODECS: CodecDef[] = [
   }
 ]
 
-export const ALL_CODECS = [...VIDEO_CODECS, ...AUDIO_CODECS]
+/**
+ * Still-image codecs. Kept out of VIDEO_CODECS so they are never offered as
+ * a video track codec for '*' containers like MKV; image containers use
+ * them directly. AVIF reuses the AV1 entry above.
+ */
+export const IMAGE_CODECS: CodecDef[] = [
+  stillCodec('mjpeg', 'JPEG', false, 'mjpeg', 'Lossy photo compression.'),
+  stillCodec('png', 'PNG', true, 'png', 'Lossless, supports transparency.'),
+  stillCodec('webp', 'WebP', false, 'libwebp', 'Lossy or lossless, supports transparency.'),
+  stillCodec('bmp', 'BMP', true, 'bmp', 'Uncompressed bitmap.'),
+  stillCodec('tiff', 'TIFF', true, 'tiff', 'Lossless, print-grade.'),
+  stillCodec('targa', 'TGA', true, 'targa', 'Truevision Targa.')
+]
+
+function stillCodec(
+  id: string,
+  label: string,
+  lossless: boolean,
+  encoder: string,
+  description: string
+): CodecDef {
+  return {
+    id,
+    label,
+    kind: 'video',
+    lossless,
+    losslessCapable: lossless || id === 'webp',
+    description,
+    encoders: [{ name: encoder, label, vendor: 'cpu' }]
+  }
+}
+
+export const ALL_CODECS = [...VIDEO_CODECS, ...AUDIO_CODECS, ...IMAGE_CODECS]
 export const CODEC_BY_ID = new Map(ALL_CODECS.map((c) => [c.id, c]))
 
 /** ffprobe sometimes reports aliases; normalise them to our canonical ids. */
@@ -1061,7 +1136,35 @@ export const AUDIO_EXTENSIONS = [
 
 export const SUBTITLE_EXTENSIONS = ['srt', 'ass', 'ssa', 'vtt', 'sub', 'sbv']
 
-export const MEDIA_EXTENSIONS = [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS]
+/**
+ * Still images the bundled FFmpeg can decode. GIF is deliberately absent:
+ * it is already a video extension, and a single-frame GIF is still
+ * recognised as an image at probe time. HEIC/HEIF are not decodable.
+ */
+export const IMAGE_EXTENSIONS = [
+  'jpg', 'jpeg', 'jfif', 'png', 'webp', 'avif', 'bmp', 'tif', 'tiff', 'ico',
+  'tga', 'psd', 'exr', 'dds', 'qoi', 'ppm', 'pgm', 'pbm', 'pcx', 'sgi',
+  'j2k', 'jp2', 'hdr'
+]
+
+export const MEDIA_EXTENSIONS = [...VIDEO_EXTENSIONS, ...AUDIO_EXTENSIONS, ...IMAGE_EXTENSIONS]
+
+export function isImageExtension(ext: string): boolean {
+  return IMAGE_EXTENSIONS.includes(ext.replace(/^\./, '').toLowerCase())
+}
+
+/** True when an FFmpeg pixel format carries transparency. */
+export function pixelFormatHasAlpha(pixelFormat: string | undefined): boolean {
+  if (!pixelFormat) return false
+  return /^(yuva|rgba|bgra|argb|abgr|gbrap|ya\d|ya8|ya16|pal8|rgba64|bgra64)/.test(pixelFormat)
+}
+
+/** True when converting into `container` means writing a still image. */
+export function isImageTarget(container: ContainerDef | undefined, sourceIsImage = false): boolean {
+  if (!container) return false
+  // A still picture saved as GIF goes through the image path, not the video one.
+  return container.kind === 'image' || (sourceIsImage && container.id === 'gif')
+}
 
 export function isMediaFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''

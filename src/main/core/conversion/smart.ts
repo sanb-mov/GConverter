@@ -15,9 +15,9 @@ import type {
   MediaFile,
   QualityMode
 } from '@shared/models'
-import { CONTAINER_BY_ID, getCodec, normalizeCodec } from '@shared/formats'
+import { CONTAINER_BY_ID, getCodec, isImageTarget, normalizeCodec } from '@shared/formats'
 import { canRemux } from './planner'
-import { createDefaultSettings } from '../profiles/defaults'
+import { createDefaultImageSettings, createDefaultSettings } from '../profiles/defaults'
 
 export interface SmartContext {
   hardware: HardwareCapabilities | null
@@ -43,6 +43,23 @@ export function smartConvert(
   const settings = createDefaultSettings(targetFormat, quality)
 
   if (!container) return settings
+
+  /* ---------------------------- image target -------------------------- */
+
+  if (isImageTarget(container, source.isImage)) {
+    settings.video.codec = container.videoCodecs[0] ?? 'png'
+    settings.video.hardware = 'cpu'
+    settings.audio.codec = 'none'
+    settings.subtitles.action = 'remove'
+    settings.container.chapters = 'remove'
+    settings.container.attachments = false
+    settings.container.faststart = false
+    settings.metadata.action = context.settings.conversion.preserveMetadata ? 'keep' : 'remove'
+    settings.image = createDefaultImageSettings(container.id)
+    settings.image.stripMetadata = settings.metadata.action === 'remove'
+    settings.quality = (getCodec(settings.video.codec)?.lossless ?? false) ? 'lossless' : 'high'
+    return settings
+  }
 
   settings.container.faststart = container.supportsFaststart
   settings.container.chapters = context.settings.conversion.preserveChapters ? 'keep' : 'remove'
@@ -300,6 +317,20 @@ export function applyProfileCaps(
 
   const { maxWidth, maxHeight, maxFps } = profile
 
+  // Image presets: fit inside the box via the image size, never enlarging.
+  if (CONTAINER_BY_ID.get(settings.container.format)?.kind === 'image') {
+    settings.image ??= createDefaultImageSettings(settings.container.format)
+    const scale = Math.min(1, (maxWidth ?? Infinity) / video.width, (maxHeight ?? Infinity) / video.height)
+    if (scale < 1) {
+      settings.image.width = Math.max(1, Math.round(video.width * scale))
+      settings.image.height = Math.max(1, Math.round(video.height * scale))
+    } else {
+      settings.image.width = undefined
+      settings.image.height = undefined
+    }
+    return settings
+  }
+
   if (maxWidth || maxHeight) {
     // Respect orientation: a vertical video capped at "1080x1920" should be
     // compared against the larger of the two limits on its long edge.
@@ -348,6 +379,12 @@ export function describeProfileEffect(
   const video = source.primaryVideo
   const applied = applyProfileCaps(profile, source)
 
+  if (video && applied.image?.width && applied.image.width !== video.width) {
+    notes.push(
+      `Resolution reduced from ${video.width}×${video.height} to ${applied.image.width}×${applied.image.height}`
+    )
+  }
+  if (applied.image?.stripMetadata) notes.push('Metadata removed')
   if (video && applied.video.width && applied.video.width !== video.width) {
     notes.push(
       `Resolution reduced from ${video.width}×${video.height} to ${applied.video.width}×${applied.video.height}`

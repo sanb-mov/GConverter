@@ -86,6 +86,13 @@ slightly better quality per bit. Use *Auto* unless you have a reason not to.
 - **Metadata and chapters** — preserve, strip or edit.
 - **Command preview** — see and copy the exact FFmpeg command.
 - **Logs** — structured, filterable, exportable.
+- **Images** — JPG, PNG, WebP, AVIF, BMP, TIFF, ICO, TGA and GIF, with
+  quality, size, transparency background and metadata removal, plus image
+  presets. A video can also be saved as a single frame.
+- **YouTube downloader** — whole video or audio only, choice of quality,
+  format and folder, and the option to download only a fragment (e.g. 30:00 to
+  50:00). When YouTube asks to confirm you are not a robot, GConverter opens a
+  YouTube window with the check and retries on its own once you pass it.
 
 ---
 
@@ -131,6 +138,7 @@ MKV to keep everything, or burn the subtitles into the video.
 | Settings, history, presets | `%APPDATA%/gconverter` (Windows), `~/.config/gconverter` (Linux), `~/Library/Application Support/gconverter` (macOS) |
 | Logs | `<data>/logs` — one file per session |
 | Temporary files | `<data>/temp` — cleaned automatically |
+| YouTube session | `<data>/youtube/cookies.txt` — erase it with *Forget session* |
 
 ---
 
@@ -139,3 +147,5 @@ MKV to keep everything, or burn the subtitles into the video.
 GConverter is MIT licensed. It bundles FFmpeg, which is distributed under the
 LGPL/GPL depending on build configuration; the bundled build's license terms
 apply to the FFmpeg binary itself. See <https://ffmpeg.org/legal.html>.
+It also bundles yt-dlp (<https://github.com/yt-dlp/yt-dlp>), released under the
+Unlicense. Only download content you have the right to keep.

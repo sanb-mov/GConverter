@@ -14,7 +14,14 @@ import type {
   MediaFile,
   VideoStream
 } from '@shared/models'
-import { CONTAINER_BY_ID, getCodec, qualityToValue } from '@shared/formats'
+import {
+  CONTAINER_BY_ID,
+  getCodec,
+  isImageTarget,
+  pixelFormatHasAlpha,
+  qualityToValue,
+  type ContainerDef
+} from '@shared/formats'
 import { pickHardwareEncoder } from '../hardware/detector'
 import { FFmpegCommandBuilder, escapeFilterPath } from '../ffmpeg/commandBuilder'
 
@@ -41,6 +48,10 @@ export function buildConversionCommand(
 ): BuiltCommand {
   const container = CONTAINER_BY_ID.get(settings.container.format)
   if (!container) throw new Error(`Unknown output container: ${settings.container.format}`)
+
+  if (isImageTarget(container, source.isImage)) {
+    return buildImageCommand(source, settings, container, outputPath, context)
+  }
 
   const builder = FFmpegCommandBuilder.create().overwrite(true).progressToStdout()
 
@@ -401,6 +412,159 @@ export function buildConversionCommand(
   builder.output(outputPath)
 
   return { builder, args: builder.build(), videoEncoder, audioEncoder }
+}
+
+/* ------------------------------------------------------------------ */
+/* Still images                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Write one still frame. Works for image → image and for grabbing a frame
+ * out of a video (at the trim start, when set).
+ */
+function buildImageCommand(
+  source: MediaFile,
+  settings: ConversionSettings,
+  container: ContainerDef,
+  outputPath: string,
+  context: BuildContext
+): BuiltCommand {
+  const picture =
+    source.streams.find((s): s is VideoStream => s.kind === 'video' && !s.isAttachedPic) ??
+    source.streams.find((s): s is VideoStream => s.kind === 'video')
+  if (!picture) throw new Error('The source has no picture to save as an image')
+
+  const image = settings.image ?? { quality: 90, background: '#ffffff', stripMetadata: false }
+  const quality = Math.round(Math.min(100, Math.max(1, image.quality)))
+  const target = container.videoCodecs[0] ?? 'png'
+  const encoder = pickImageEncoder(target, context.availableEncoders)
+
+  const builder = FFmpegCommandBuilder.create().overwrite(true).progressToStdout()
+  builder.input(source.path, settings.trim?.start ? ['-ss', String(settings.trim.start)] : [])
+
+  /* ----------------------------- filters ----------------------------- */
+
+  const { width, height } = imageOutputSize(picture, image, container.maxDimension)
+  const resized = width !== picture.width || height !== picture.height
+  const flatten = pixelFormatHasAlpha(picture.pixelFormat) && !container.supportsAlpha
+
+  const chain: string[] = []
+  if (resized) chain.push(`scale=${width}:${height}:flags=lanczos`)
+
+  let graph: string
+  if (flatten) {
+    // Paint transparent pixels over the chosen colour instead of letting the
+    // encoder drop the alpha channel (which usually turns it black).
+    chain.push('format=rgba')
+    graph =
+      `color=c=${ffmpegColor(image.background)}:s=${width}x${height}[bg];` +
+      `[0:${picture.index}]${chain.join(',')}[fg];` +
+      `[bg][fg]overlay=shortest=1:format=auto`
+  } else {
+    graph = `[0:${picture.index}]${chain.length ? chain.join(',') : 'null'}`
+  }
+
+  // ICO's PNG payload must be RGBA, whatever the source was.
+  const outFormat = container.id === 'ico' ? 'rgba' : imagePixelFormat(target, quality)
+  if (outFormat) graph += `,format=${outFormat}`
+  if (target === 'gif') {
+    graph += ',split[a][b];[a]palettegen=stats_mode=single[p];[b][p]paletteuse=dither=sierra2_4a'
+  }
+
+  builder.filterComplex(`${graph}[out]`)
+  builder.mapFilterLabel('out')
+  builder.outputOption('-frames:v', '1')
+  builder.videoCodec(encoder)
+
+  /* ----------------------------- quality ----------------------------- */
+
+  switch (target) {
+    case 'mjpeg':
+      // JPEG qscale runs 2 (best) … 31 (worst).
+      builder.streamOption('q:v', String(Math.round(2 + ((100 - quality) * 29) / 99)))
+      break
+    case 'webp':
+      if (quality >= 100) builder.streamOption('lossless', '1')
+      else builder.streamOption('quality', String(quality))
+      builder.streamOption('compression_level', '6')
+      break
+    case 'av1':
+      builder.streamOption('crf', String(Math.round(((100 - quality) * 63) / 100)))
+      builder.streamOption('b:v', '0')
+      if (encoder === 'libaom-av1') {
+        builder.streamOption('still-picture', '1')
+        builder.streamOption('cpu-used', '6')
+      }
+      break
+    case 'png':
+      builder.streamOption('compression_level', '9')
+      break
+  }
+
+  /* ---------------------------- metadata ----------------------------- */
+
+  // The image toggle is what the user sees, so it wins over the generic action.
+  const strip = settings.image ? settings.image.stripMetadata : settings.metadata.action === 'remove'
+  if (strip) {
+    builder.mapMetadata('-1')
+  } else {
+    builder.mapMetadata(0)
+  }
+
+  if (container.muxer) builder.format(container.muxer)
+  // Without -update, image2 treats a "%" in the filename as a sequence pattern.
+  if (container.muxer === 'image2') builder.outputOption('-update', '1')
+
+  builder.output(outputPath)
+  return { builder, args: builder.build(), videoEncoder: encoder }
+}
+
+function pickImageEncoder(target: string, available: string[]): string {
+  const preferences: Record<string, string[]> = {
+    av1: ['libaom-av1', 'libsvtav1'],
+    webp: ['libwebp']
+  }
+  const candidates = preferences[target] ?? getCodec(target)?.encoders.map((e) => e.name) ?? [target]
+  return candidates.find((name) => available.includes(name)) ?? candidates[0]
+}
+
+/** Pixel format to force for encoders whose default would be a poor choice. */
+function imagePixelFormat(target: string, quality: number): string | undefined {
+  if (target === 'mjpeg') return quality >= 90 ? 'yuvj444p' : 'yuvj420p'
+  if (target === 'av1') return 'yuv420p'
+  return undefined
+}
+
+/**
+ * Final picture size. Two dimensions fit inside that box (never distorting),
+ * one dimension scales the other proportionally, and formats with a hard
+ * limit (ICO: 256 px) are shrunk to fit it.
+ */
+export function imageOutputSize(
+  picture: { width: number; height: number },
+  image: { width?: number; height?: number },
+  maxDimension?: number
+): { width: number; height: number } {
+  const sw = Math.max(1, picture.width || 1)
+  const sh = Math.max(1, picture.height || 1)
+  let scale = 1
+
+  if (image.width && image.height) scale = Math.min(image.width / sw, image.height / sh)
+  else if (image.width) scale = image.width / sw
+  else if (image.height) scale = image.height / sh
+
+  if (maxDimension) scale = Math.min(scale, maxDimension / Math.max(sw, sh))
+
+  return {
+    width: Math.max(1, Math.round(sw * scale)),
+    height: Math.max(1, Math.round(sh * scale))
+  }
+}
+
+/** "#rrggbb" → "0xrrggbb"; anything unexpected falls back to white. */
+function ffmpegColor(value: string): string {
+  const match = /^#?([0-9a-f]{6})$/i.exec(value.trim())
+  return match ? `0x${match[1].toLowerCase()}` : '0xffffff'
 }
 
 /**

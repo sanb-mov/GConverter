@@ -1798,3 +1798,93 @@
     opacity: 0.5;
   }
 }
+
+/* ---------------------------- YouTube ----------------------------------- */
+
+.yt-url {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.yt-url > svg {
+  position: absolute;
+  left: 11px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+.yt-url > .input {
+  padding-left: 33px;
+}
+
+.yt-info {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 14px;
+  align-items: center;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--bg-elevated);
+}
+
+.yt-info-thumb {
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-md);
+  object-fit: cover;
+  background: var(--bg-overlay);
+}
+
+.yt-info-title {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.yt-row {
+  grid-template-columns: 64px 1fr auto;
+}
+
+.yt-row-thumb {
+  width: 64px;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--r-sm, 6px);
+  object-fit: cover;
+  background: var(--bg-overlay);
+}
+
+/* ---------------------------- Image preview ----------------------------- */
+
+.image-preview {
+  display: grid;
+  place-items: center;
+  min-height: 240px;
+  max-height: 70vh;
+  padding: 12px;
+  border-radius: var(--r-md);
+  /* Checkerboard so transparent areas are visible. */
+  background-color: var(--bg-elevated);
+  background-image:
+    linear-gradient(45deg, var(--bg-overlay) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--bg-overlay) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--bg-overlay) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--bg-overlay) 75%);
+  background-size: 18px 18px;
+  background-position: 0 0, 0 9px, 9px -9px, -9px 0;
+}
+
+.image-preview img {
+  max-width: 100%;
+  max-height: calc(70vh - 24px);
+  object-fit: contain;
+}
+
+.file-thumb.image {
+  background: rgba(245, 158, 11, 0.12);
+  color: #f59e0b;
+}

@@ -26,8 +26,12 @@ import {
   Zap
 } from 'lucide-react'
 import type { ConversionProfile } from '@shared/models'
-import { AUDIO_CODECS, CONTAINERS, VIDEO_CODECS, getCodec } from '@shared/formats'
-import { Badge, Field, Modal, Select } from '../components/ui'
+import { AUDIO_CODECS, CONTAINERS, IMAGE_CODECS, VIDEO_CODECS, getCodec } from '@shared/formats'
+import { Badge, Field, Modal, Select, Toggle } from '../components/ui'
+import { isImageProfile } from '../components/ConversionEditor'
+
+/** Image encoders where the 1–100 quality value matters. */
+const QUALITY_CODECS = ['mjpeg', 'webp', 'av1']
 import { api, useStore } from '../store/useStore'
 import { useT } from '../lib/i18n'
 
@@ -62,10 +66,10 @@ export function PresetsPage(): React.JSX.Element {
   const setFileSettings = useStore((s) => s.setFileSettings)
   const setPage = useStore((s) => s.setPage)
 
-  const [filter, setFilter] = useState<'all' | 'video' | 'audio' | 'custom'>('all')
+  const [filter, setFilter] = useState<Filter>('all')
   const [editing, setEditing] = useState<ConversionProfile | null>(null)
 
-  const visible = profiles.filter((p) => filter === 'all' || p.category === filter)
+  const visible = profiles.filter((p) => matchesFilter(p, filter))
   const selected = files.find((f) => f.id === selectedFileId)
 
   const apply = async (profile: ConversionProfile): Promise<void> => {
@@ -74,6 +78,14 @@ export function PresetsPage(): React.JSX.Element {
         kind: 'info',
         title: t('presets.noFile'),
         message: t('presets.noFileText')
+      })
+      return
+    }
+    // A video preset on a photo (or the reverse) would produce nonsense.
+    if (!!selected.isImage !== isImageProfile(profile)) {
+      pushToast({
+        kind: 'error',
+        title: selected.isImage ? t('presets.notForImage') : t('presets.onlyForImages')
       })
       return
     }
@@ -125,15 +137,23 @@ export function PresetsPage(): React.JSX.Element {
       </div>
 
       <div className="row gap-8 mb-20">
-        {(['all', 'video', 'audio', 'custom'] as const).map((key) => (
+        {(['all', 'video', 'audio', 'image', 'custom'] as const).map((key) => (
           <button
             key={key}
             className={`btn btn-sm ${filter === key ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => setFilter(key)}
           >
-            {key === 'all' ? t('common.all') : key === 'video' ? t('common.video') : key === 'audio' ? t('common.audio') : t('presets.filterCustom')}
+            {key === 'all'
+              ? t('common.all')
+              : key === 'video'
+                ? t('common.video')
+                : key === 'audio'
+                  ? t('common.audio')
+                  : key === 'image'
+                    ? t('common.image')
+                    : t('presets.filterCustom')}
             <span className="text-xs" style={{ opacity: 0.7 }}>
-              {key === 'all' ? profiles.length : profiles.filter((p) => p.category === key).length}
+              {profiles.filter((p) => matchesFilter(p, key)).length}
             </span>
           </button>
         ))}
@@ -177,6 +197,15 @@ export function PresetsPage(): React.JSX.Element {
   )
 }
 
+type Filter = 'all' | 'video' | 'audio' | 'image' | 'custom'
+
+/** The Image tab also lists custom presets that write images. */
+function matchesFilter(profile: ConversionProfile, filter: Filter): boolean {
+  if (filter === 'all') return true
+  if (filter === 'image') return isImageProfile(profile)
+  return profile.category === filter
+}
+
 /**
  * A cap of 1080×1920 (portrait) limits the *short* edge to 1080, so the
  * honest label is "≤ 1080p", not "≤ 1920p".
@@ -184,6 +213,8 @@ export function PresetsPage(): React.JSX.Element {
 function resolutionCapLabel(profile: ConversionProfile): string | null {
   const { maxWidth, maxHeight } = profile
   if (!maxWidth && !maxHeight) return null
+  // Image caps are a square box on the long edge: "≤ 512 px" reads better.
+  if (isImageProfile(profile)) return `≤ ${Math.max(maxWidth ?? 0, maxHeight ?? 0)} px`
   const shortEdge = Math.min(maxWidth ?? Infinity, maxHeight ?? Infinity)
   if (!Number.isFinite(shortEdge)) return null
   return `≤ ${shortEdge}p`
@@ -245,6 +276,9 @@ function PresetCard({
         {resolutionCapLabel(profile) && (
           <Badge tone="warning">{resolutionCapLabel(profile)}</Badge>
         )}
+        {profile.settings.image && QUALITY_CODECS.includes(String(profile.settings.video.codec)) && (
+          <Badge tone="neutral">Q {profile.settings.image.quality}</Badge>
+        )}
         {profile.settings.quality === 'lossless' && <Badge tone="success">Lossless</Badge>}
       </div>
 
@@ -270,6 +304,8 @@ function PresetEditor({
   const encoders = ffmpeg?.encoders ?? []
 
   const container = CONTAINERS.find((c) => c.id === draft.settings.container.format)
+  const isImage = container?.kind === 'image'
+  const hasImageQuality = QUALITY_CODECS.includes(String(draft.settings.video.codec))
 
   const update = (mutate: (d: ConversionProfile) => void): void => {
     const next = structuredClone(draft)
@@ -358,6 +394,21 @@ function PresetEditor({
                   d.settings.container.format = value
                   const c = CONTAINERS.find((x) => x.id === value)
                   d.settings.container.faststart = c?.supportsFaststart ?? false
+
+                  if (c?.kind === 'image') {
+                    // An image preset holds one picture codec and nothing else.
+                    d.settings.video.codec = c.videoCodecs[0] ?? 'png'
+                    d.settings.audio.codec = 'none'
+                    d.settings.image ??= { quality: 85, background: '#ffffff', stripMetadata: false }
+                    d.maxFps = undefined
+                    return
+                  }
+                  // Leaving an image format: picture codecs make no sense in a video.
+                  if (IMAGE_CODECS.some((ic) => ic.id === d.settings.video.codec)) {
+                    d.settings.video.codec = 'copy'
+                    d.settings.audio.codec = 'copy'
+                  }
+                  d.settings.image = undefined
                   // Reset codecs that the new container cannot hold.
                   if (c && !c.videoCodecs.includes('*')) {
                     const codec = String(d.settings.video.codec)
@@ -376,11 +427,12 @@ function PresetEditor({
               options={CONTAINERS.map((c) => ({
                 value: c.id,
                 label: c.label,
-                group: c.kind === 'video' ? 'Video' : 'Audio'
+                group: c.kind === 'video' ? t('common.video') : c.kind === 'audio' ? t('common.audio') : t('common.image')
               }))}
             />
           </Field>
 
+          {!isImage && (
           <Field label="Quality">
             <Select
               value={draft.settings.quality}
@@ -399,8 +451,63 @@ function PresetEditor({
               ]}
             />
           </Field>
+          )}
         </div>
 
+        {isImage && draft.settings.image && (
+          <>
+            <Field
+              label={
+                hasImageQuality
+                  ? t('editor.imageQuality', { value: draft.settings.image.quality })
+                  : t('editor.quality')
+              }
+              hint={hasImageQuality ? t('editor.imageQualityHint') : t('editor.imageQualityLossless')}
+            >
+              <input
+                type="range"
+                className="range"
+                min={1}
+                max={100}
+                disabled={!hasImageQuality}
+                value={draft.settings.image.quality}
+                onChange={(e) =>
+                  update((d) => {
+                    d.settings.image!.quality = Number(e.target.value)
+                  })
+                }
+              />
+            </Field>
+            <Field label={t('editor.imageBackground')} hint={t('editor.imageBackgroundHint')}>
+              <input
+                className="input"
+                type="color"
+                style={{ height: 38, padding: 4 }}
+                disabled={container?.supportsAlpha}
+                value={draft.settings.image.background}
+                onChange={(e) =>
+                  update((d) => {
+                    d.settings.image!.background = e.target.value
+                  })
+                }
+              />
+            </Field>
+            <Toggle
+              title={t('editor.imageStripMeta')}
+              description={t('editor.imageStripMetaHint')}
+              checked={draft.settings.image.stripMetadata}
+              onChange={(value) =>
+                update((d) => {
+                  d.settings.image!.stripMetadata = value
+                  d.settings.metadata.action = value ? 'remove' : 'keep'
+                })
+              }
+            />
+          </>
+        )}
+
+        {!isImage && (
+        <>
         <div className="field-row">
           <Field label="Video codec">
             <Select
@@ -454,6 +561,8 @@ function PresetEditor({
             />
           </Field>
         </div>
+        </>
+        )}
 
         <div className="field-row">
           <Field
@@ -488,6 +597,7 @@ function PresetEditor({
           </Field>
         </div>
 
+        {!isImage && (
         <Field label="Max frame rate" hint="Only applied when the source is faster.">
           <input
             className="input"
@@ -501,6 +611,7 @@ function PresetEditor({
             }
           />
         </Field>
+        )}
       </div>
     </Modal>
   )

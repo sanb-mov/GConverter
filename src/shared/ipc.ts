@@ -19,7 +19,14 @@ import type {
   JobProgress,
   LogRecord,
   MediaFile,
-  ValidationReport
+  ValidationReport,
+  YouTubeAuthStatus,
+  YouTubeCookiesBrowser,
+  YouTubeDownload,
+  YouTubeInfoResult,
+  YouTubeRequest,
+  YouTubeVerifyResult,
+  YtDlpInfo
 } from './models'
 
 export const IPC = {
@@ -94,6 +101,21 @@ export const IPC = {
   saveTextFile: 'shell:save-text',
   fileUrl: 'shell:file-url',
 
+  /* youtube */
+  youtubeEngine: 'youtube:engine',
+  youtubeInfo: 'youtube:info',
+  youtubeStart: 'youtube:start',
+  youtubeList: 'youtube:list',
+  youtubeCancel: 'youtube:cancel',
+  youtubeRetry: 'youtube:retry',
+  youtubeRemove: 'youtube:remove',
+  youtubeClearFinished: 'youtube:clear-finished',
+  youtubeEvent: 'youtube:event',
+  youtubeAuthStatus: 'youtube:auth-status',
+  youtubeVerify: 'youtube:verify',
+  youtubeVerifyFinish: 'youtube:verify-finish',
+  youtubeSignOut: 'youtube:sign-out',
+
   /* app */
   appInfo: 'app:info',
   appReady: 'app:ready-state'
@@ -134,6 +156,11 @@ export type QueueEventPayload =
   | { type: 'job-progress'; jobId: string; progress: JobProgress }
   | { type: 'job-removed'; jobId: string }
   | { type: 'queue-state'; running: boolean; paused: boolean }
+
+export type YouTubeEventPayload =
+  | { type: 'added'; download: YouTubeDownload }
+  | { type: 'updated'; download: YouTubeDownload }
+  | { type: 'removed'; id: string }
 
 export interface GConverterApi {
   media: {
@@ -183,7 +210,7 @@ export interface GConverterApi {
     ffmpeg(): Promise<FFmpegInfo>
     hardware(): Promise<HardwareCapabilities>
     refresh(): Promise<{ ffmpeg: FFmpegInfo; hardware: HardwareCapabilities }>
-    pickBinary(kind: 'ffmpeg' | 'ffprobe'): Promise<string | null>
+    pickBinary(kind: 'ffmpeg' | 'ffprobe' | 'yt-dlp'): Promise<string | null>
     /** Fires when the main process re-detects FFmpeg or hardware. */
     onRefresh(
       handler: (payload: { ffmpeg: FFmpegInfo; hardware: HardwareCapabilities }) => void
@@ -219,6 +246,24 @@ export interface GConverterApi {
     copyText(text: string): Promise<void>
     saveTextFile(defaultName: string, contents: string): Promise<string | null>
     fileUrl(target: string): Promise<string>
+  }
+  youtube: {
+    engine(): Promise<YtDlpInfo>
+    info(url: string, cookiesBrowser: YouTubeCookiesBrowser): Promise<YouTubeInfoResult>
+    start(request: YouTubeRequest): Promise<YouTubeDownload>
+    list(): Promise<YouTubeDownload[]>
+    cancel(id: string): Promise<boolean>
+    retry(id: string, cookiesBrowser?: YouTubeCookiesBrowser): Promise<boolean>
+    /** Saved session from the built-in YouTube window. */
+    authStatus(): Promise<YouTubeAuthStatus>
+    /** Open the built-in YouTube window; resolves when it closes. autoClose: close by itself once the robot check is passed. */
+    verify(url?: string, autoClose?: boolean): Promise<YouTubeVerifyResult>
+    /** Close the verification window ("I'm done"). */
+    verifyFinish(): Promise<void>
+    signOut(): Promise<YouTubeAuthStatus>
+    remove(id: string): Promise<boolean>
+    clearFinished(): Promise<void>
+    onEvent(handler: (event: YouTubeEventPayload) => void): () => void
   }
   app: {
     info(): Promise<AppInfo>

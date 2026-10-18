@@ -7,12 +7,14 @@
  * UI always states when a preset will change those properties.
  */
 
+import path from 'node:path'
 import type {
   AppSettings,
   AudioSettings,
   ContainerSettings,
   ConversionProfile,
   ConversionSettings,
+  ImageSettings,
   MetadataSettings,
   QualityMode,
   SubtitleSettings,
@@ -44,6 +46,16 @@ export function createDefaultSettings(
     metadata: { action: 'keep' },
     quality,
     threads: 0
+  }
+}
+
+/** Sensible still-image defaults: visually transparent quality, nothing resized. */
+export function createDefaultImageSettings(format: string): ImageSettings {
+  const quality: Record<string, number> = { jpg: 90, webp: 85, avif: 70 }
+  return {
+    quality: quality[format] ?? 100,
+    background: '#ffffff',
+    stripMetadata: false
   }
 }
 
@@ -618,7 +630,57 @@ export const AUDIO_PRESETS: ConversionProfile[] = [
   )
 ]
 
-export const BUILT_IN_PRESETS = [...VIDEO_PRESETS, ...AUDIO_PRESETS]
+/* ------------------------------------------------------------------ */
+/* Image presets                                                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * An image preset: one still-image format plus quality and options. Size
+ * limits use the same never-upscale caps as video presets.
+ */
+function imagePreset(
+  id: string,
+  format: string,
+  codec: string,
+  icon: string,
+  image: Partial<ImageSettings>,
+  caps?: { maxWidth?: number; maxHeight?: number }
+): ConversionProfile {
+  const settings = createDefaultSettings(format, 'high')
+  settings.video = { ...settings.video, codec, hardware: 'cpu' }
+  settings.audio = { codec: 'none' }
+  settings.subtitles = { action: 'remove' }
+  settings.container = { ...settings.container, faststart: false, chapters: 'remove', attachments: false }
+  settings.image = { ...createDefaultImageSettings(format), ...image }
+  settings.metadata = { action: settings.image.stripMetadata ? 'remove' : 'keep' }
+  return {
+    id,
+    name: `preset.${id}.name`,
+    description: `preset.${id}.desc`,
+    category: 'image',
+    builtIn: true,
+    icon,
+    ...caps,
+    settings
+  }
+}
+
+export const IMAGE_PRESETS: ConversionProfile[] = [
+  imagePreset('image-web', 'jpg', 'mjpeg', 'globe', { quality: 85, stripMetadata: true }, {
+    maxWidth: 2560,
+    maxHeight: 2560
+  }),
+  imagePreset('image-png', 'png', 'png', 'gem', {}),
+  imagePreset('image-webp', 'webp', 'webp', 'zap', { quality: 80 }, { maxWidth: 1920, maxHeight: 1920 }),
+  imagePreset('image-avif', 'avif', 'av1', 'archive', { quality: 60 }),
+  imagePreset('image-thumbnail', 'jpg', 'mjpeg', 'image', { quality: 80, stripMetadata: true }, {
+    maxWidth: 512,
+    maxHeight: 512
+  }),
+  imagePreset('image-icon', 'ico', 'png', 'shield', {})
+]
+
+export const BUILT_IN_PRESETS = [...VIDEO_PRESETS, ...AUDIO_PRESETS, ...IMAGE_PRESETS]
 
 /* ------------------------------------------------------------------ */
 /* Application settings defaults                                       */
@@ -654,9 +716,18 @@ export function createDefaultAppSettings(defaultOutputFolder: string, tempDir: s
       preferLossless: true,
       overwritePolicy: 'rename'
     },
+    youtube: {
+      downloadFolder: path.join(defaultOutputFolder, 'YouTube'),
+      mode: 'video',
+      quality: 1080,
+      videoFormat: 'mp4',
+      audioFormat: 'mp3',
+      cookiesBrowser: ''
+    },
     advanced: {
       ffmpegPath: '',
       ffprobePath: '',
+      ytdlpPath: '',
       tempDirectory: tempDir,
       logLevel: 'info',
       keepLogDays: 7

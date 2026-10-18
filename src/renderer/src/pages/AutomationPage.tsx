@@ -289,7 +289,13 @@ function RuleEditor({
               value: p.id,
               label: t(p.name),
               group:
-                p.category === 'video' ? t('common.video') : p.category === 'audio' ? t('common.audio') : t('presets.filterCustom')
+                p.category === 'video'
+                  ? t('common.video')
+                  : p.category === 'audio'
+                    ? t('common.audio')
+                    : p.category === 'image'
+                      ? t('common.image')
+                      : t('presets.filterCustom')
             }))}
           />
         </Field>

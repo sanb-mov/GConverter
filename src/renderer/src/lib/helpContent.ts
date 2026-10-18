@@ -229,6 +229,88 @@ const EN: HelpArticle[] = [
     ]
   },
   {
+    id: 'images',
+    icon: 'image',
+    title: 'Images',
+    summary:
+      'Photos and graphics convert on the Convert page like any other file: JPG, PNG, WebP, AVIF, BMP, TIFF, ICO, TGA and GIF.',
+    steps: [
+      'Drop images onto the window (or use Add). They are recognised as pictures, not videos.',
+      'Pick the target under Format. Only image formats are offered for an image.',
+      'Adjust quality, size and background if needed, then press Convert.'
+    ],
+    options: [
+      {
+        name: 'Quality',
+        text: 'Applies to JPG, WebP and AVIF. Higher keeps more detail; lower gives smaller files. 100 on WebP means lossless. PNG, BMP, TIFF, TGA and ICO are always lossless.'
+      },
+      {
+        name: 'Width / Height',
+        text: 'Leave both empty to keep the size. With one value the other follows the aspect ratio; with both, the picture fits inside that box without being stretched.'
+      },
+      {
+        name: 'Background for transparency',
+        text: 'JPG and AVIF cannot store transparency, so transparent areas are painted with this colour instead of turning black.'
+      },
+      {
+        name: 'Remove metadata',
+        text: 'Drops EXIF data such as camera model and GPS location. Worth doing before posting photos online.'
+      },
+      {
+        name: 'Frame at (seconds)',
+        text: 'When the source is a video, an image format saves a single frame from that moment.'
+      }
+    ],
+    notes: [
+      'ICO files are limited to 256 × 256; larger pictures are scaled down automatically.',
+      'HEIC/HEIF photos (iPhone) cannot be read by the bundled FFmpeg. Export them as JPG first.'
+    ]
+  },
+  {
+    id: 'youtube',
+    icon: 'youtube',
+    title: 'YouTube',
+    summary: 'Download a YouTube video or just its audio — the whole thing or only a fragment.',
+    steps: [
+      'Paste the video link and press Analyse (or Enter). The title, length and available qualities appear.',
+      'Choose "Video with audio" or "Audio only", then the quality and format.',
+      'Pick the folder to save into.',
+      'To keep only part of the video, turn on "Download only a part" and type the start and end, e.g. 30:00 and 50:00.',
+      'Press Download. Progress appears in the list below; when it finishes you can open the file or its folder.'
+    ],
+    options: [
+      {
+        name: 'Quality',
+        text: 'The highest resolution to download. If the video has nothing that small, the closest one is used.'
+      },
+      {
+        name: 'Format',
+        text: 'MP4 plays everywhere (H.264 + AAC is preferred). MKV accepts anything. WebM keeps YouTube’s VP9/Opus streams untouched.'
+      },
+      {
+        name: 'Audio format / bitrate',
+        text: 'MP3 and M4A are the most compatible; Opus is the original YouTube audio; FLAC and WAV are lossless containers (the source itself is still lossy).'
+      },
+      {
+        name: 'Download only a part',
+        text: 'Only that range is downloaded, so an hour-long video does not have to be fetched in full. Times accept HH:MM:SS, MM:SS or plain seconds.'
+      },
+      {
+        name: 'Exact cut',
+        text: 'Without it the part starts at the nearest keyframe, which can be a couple of seconds early. With it the edges are re-encoded so it starts exactly on time; slower.'
+      },
+      {
+        name: 'Use sign-in from',
+        text: 'When YouTube asks to confirm you are not a robot, GConverter shows a "Verify" dialog: it opens a YouTube window with the "I\'m not a robot" check, closes it by itself once you pass, and retries. If that is not enough, sign in with Google in that same window. "Verify / sign in" does the same at any time, and "Forget session" erases it. You can also use the session of an installed browser instead.'
+      }
+    ],
+    notes: [
+      'Downloads use yt-dlp, which ships with GConverter. YouTube changes often; if downloads start failing, a newer yt-dlp usually fixes it (Settings → Advanced → yt-dlp path).',
+      'Live streams cannot be downloaded.',
+      'Only download content you have the right to keep, and respect YouTube’s terms and the creator’s rights.'
+    ]
+  },
+  {
     id: 'queue',
     icon: 'list',
     title: 'Queue',
@@ -690,6 +772,88 @@ const ES: HelpArticle[] = [
         name: 'Hilos',
         text: 'Con 0 decide FFmpeg. Bájalo solo si quieres dejar CPU libre para otras tareas.'
       }
+    ]
+  },
+  {
+    id: 'images',
+    icon: 'image',
+    title: 'Imágenes',
+    summary:
+      'Las fotos y gráficos se convierten en la página Convertir como cualquier otro archivo: JPG, PNG, WebP, AVIF, BMP, TIFF, ICO, TGA y GIF.',
+    steps: [
+      'Arrastra las imágenes a la ventana (o usa Añadir). Se reconocen como imágenes, no como vídeos.',
+      'Elige el destino en Formato. Para una imagen solo se ofrecen formatos de imagen.',
+      'Ajusta calidad, tamaño y fondo si hace falta y pulsa Convertir.'
+    ],
+    options: [
+      {
+        name: 'Calidad',
+        text: 'Se aplica a JPG, WebP y AVIF. Más alta conserva más detalle; más baja da archivos más pequeños. 100 en WebP significa sin pérdida. PNG, BMP, TIFF, TGA e ICO siempre son sin pérdida.'
+      },
+      {
+        name: 'Ancho / Alto',
+        text: 'Déjalos vacíos para mantener el tamaño. Con un solo valor, el otro sigue la proporción; con ambos, la imagen cabe en ese recuadro sin deformarse.'
+      },
+      {
+        name: 'Fondo para la transparencia',
+        text: 'JPG y AVIF no admiten transparencia, así que las zonas transparentes se pintan con este color en lugar de quedar negras.'
+      },
+      {
+        name: 'Quitar metadatos',
+        text: 'Elimina los datos EXIF, como el modelo de cámara y la ubicación GPS. Conviene hacerlo antes de publicar fotos en Internet.'
+      },
+      {
+        name: 'Fotograma en (segundos)',
+        text: 'Si el origen es un vídeo, un formato de imagen guarda un único fotograma de ese momento.'
+      }
+    ],
+    notes: [
+      'Los ICO están limitados a 256 × 256; las imágenes más grandes se reducen automáticamente.',
+      'Las fotos HEIC/HEIF (iPhone) no se pueden leer con el FFmpeg incluido. Expórtalas antes como JPG.'
+    ]
+  },
+  {
+    id: 'youtube',
+    icon: 'youtube',
+    title: 'YouTube',
+    summary: 'Descarga un vídeo de YouTube o solo su audio, completo o solo un fragmento.',
+    steps: [
+      'Pega el enlace del vídeo y pulsa Analizar (o Intro). Aparecen el título, la duración y las calidades disponibles.',
+      'Elige «Vídeo con audio» o «Solo audio» y después la calidad y el formato.',
+      'Elige la carpeta donde guardarlo.',
+      'Para quedarte solo con una parte, activa «Descargar solo una parte» y escribe el inicio y el fin, por ejemplo 30:00 y 50:00.',
+      'Pulsa Descargar. El progreso aparece en la lista de abajo; al terminar puedes abrir el archivo o su carpeta.'
+    ],
+    options: [
+      {
+        name: 'Calidad',
+        text: 'La resolución máxima a descargar. Si el vídeo no tiene ninguna tan pequeña, se usa la más cercana.'
+      },
+      {
+        name: 'Formato',
+        text: 'MP4 se reproduce en todas partes (se prefiere H.264 + AAC). MKV admite cualquier cosa. WebM conserva intactos los flujos VP9/Opus de YouTube.'
+      },
+      {
+        name: 'Formato / bitrate de audio',
+        text: 'MP3 y M4A son los más compatibles; Opus es el audio original de YouTube; FLAC y WAV son contenedores sin pérdida (el origen sigue siendo con pérdida).'
+      },
+      {
+        name: 'Descargar solo una parte',
+        text: 'Solo se descarga ese tramo, así que no hace falta bajar entero un vídeo de una hora. Los tiempos aceptan HH:MM:SS, MM:SS o segundos.'
+      },
+      {
+        name: 'Corte exacto',
+        text: 'Sin él, la parte empieza en el fotograma clave más cercano, que puede estar un par de segundos antes. Con él se recodifican los bordes para que empiece justo a tiempo; es más lento.'
+      },
+      {
+        name: 'Usar la sesión de',
+        text: 'Cuando YouTube pide confirmar que no eres un robot, GConverter muestra un aviso «Verificar»: abre una ventana de YouTube con la casilla «No soy un robot», se cierra sola cuando la superas y vuelve a intentarlo. Si no alcanza, inicia sesión con Google en esa misma ventana. «Verificar / iniciar sesión» hace lo mismo cuando quieras y «Olvidar sesión» la borra. También puedes usar la sesión de un navegador instalado.'
+      }
+    ],
+    notes: [
+      'Las descargas usan yt-dlp, que viene incluido con GConverter. YouTube cambia a menudo; si las descargas empiezan a fallar, un yt-dlp más reciente suele solucionarlo (Configuración → Avanzado → Ruta de yt-dlp).',
+      'No se pueden descargar emisiones en directo.',
+      'Descarga solo contenido que tengas derecho a conservar y respeta los términos de YouTube y los derechos del creador.'
     ]
   },
   {

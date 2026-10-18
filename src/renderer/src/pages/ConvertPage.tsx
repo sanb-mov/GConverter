@@ -12,8 +12,13 @@ import {
   Wand2
 } from 'lucide-react'
 import type { ConversionProfile } from '@shared/models'
-import { CONTAINERS } from '@shared/formats'
-import { ConversionEditor } from '../components/ConversionEditor'
+import {
+  ConversionEditor,
+  containerGroupKey,
+  defaultTargetFor,
+  formatOptionsFor,
+  isImageProfile
+} from '../components/ConversionEditor'
 import { Dropzone } from '../components/Dropzone'
 import { FileCard } from '../components/FileCard'
 import { Player } from '../components/Player'
@@ -43,8 +48,12 @@ export function ConvertPage(): React.JSX.Element {
 
   const suggestedProfiles = useMemo(() => {
     if (!selected) return profiles.slice(0, 8)
+    // Image presets for pictures, video/audio presets for everything else.
+    if (selected.isImage) return profiles.filter(isImageProfile).slice(0, 10)
     const wanted = selected.hasVideo ? 'video' : 'audio'
-    return profiles.filter((p) => p.category === wanted || p.category === 'custom').slice(0, 10)
+    return profiles
+      .filter((p) => !isImageProfile(p) && (p.category === wanted || p.category === 'custom'))
+      .slice(0, 10)
   }, [profiles, selected])
 
   /* Keep a valid selection as files come and go. */
@@ -79,10 +88,13 @@ export function ConvertPage(): React.JSX.Element {
         let settings = settingsByFile[file.id]
         if (!settings) {
           // Files never opened in the editor still need sensible settings.
-          const reference = selected ? settingsByFile[selected.id] : undefined
+          // Only borrow the selected file's settings for the same kind of
+          // file — image settings applied to a video would grab one frame.
+          const sameKind = selected && !!selected.isImage === !!file.isImage
+          const reference = sameKind ? settingsByFile[selected.id] : undefined
           settings = reference
             ? structuredClone(reference)
-            : await api().conversion.smartSettings(file, file.hasVideo ? 'mp4' : 'mp3')
+            : await api().conversion.smartSettings(file, defaultTargetFor(file))
         }
         await api().queue.add(file, settings)
         queued++
@@ -207,7 +219,7 @@ export function ConvertPage(): React.JSX.Element {
             </div>
           </div>
 
-          {selected && (
+          {selected && suggestedProfiles.length > 0 && (
             <div className="panel">
               <div className="panel-header">
                 <div className="panel-title">
@@ -263,10 +275,10 @@ export function ConvertPage(): React.JSX.Element {
                   }}
                   options={[
                     { value: '', label: t('convert.convertTo') },
-                    ...CONTAINERS.map((c) => ({
+                    ...formatOptionsFor(selected).map((c) => ({
                       value: c.id,
                       label: c.label,
-                      group: c.kind === 'video' ? t('common.video') : t('common.audio')
+                      group: t(containerGroupKey(c, selected.isImage))
                     }))
                   ]}
                 />

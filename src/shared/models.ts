@@ -103,6 +103,8 @@ export interface MediaFile {
   hasVideo: boolean
   hasAudio: boolean
   hasSubtitles: boolean
+  /** A still picture (photo, graphic, single-frame GIF) rather than motion media. */
+  isImage?: boolean
   probedAt: number
   /** Set when probing failed; the file is then unusable as a source. */
   error?: string
@@ -214,12 +216,25 @@ export interface TrimSettings {
   end?: number
 }
 
+/** Options used only when the output is a still image. */
+export interface ImageSettings {
+  /** 1–100; ignored by lossless formats. 100 on WebP means lossless. */
+  quality: number
+  /** Target size in pixels; one side alone keeps the aspect ratio. */
+  width?: number
+  height?: number
+  /** Colour painted behind transparent pixels when the format has no alpha. */
+  background: string
+  stripMetadata: boolean
+}
+
 export interface ConversionSettings {
   container: ContainerSettings
   video: VideoSettings
   audio: AudioSettings
   subtitles: SubtitleSettings
   metadata: MetadataSettings
+  image?: ImageSettings
   trim?: TrimSettings
   quality: QualityMode
   /** Threads hint for ffmpeg; 0 = auto. */
@@ -232,7 +247,7 @@ export interface ConversionSettings {
 /* Profiles / presets                                                  */
 /* ------------------------------------------------------------------ */
 
-export type ProfileCategory = 'video' | 'audio' | 'custom'
+export type ProfileCategory = 'video' | 'audio' | 'image' | 'custom'
 
 export interface ConversionProfile {
   id: string
@@ -488,13 +503,135 @@ export interface AppSettings {
     preferLossless: boolean
     overwritePolicy: 'ask' | 'overwrite' | 'rename'
   }
+  youtube: {
+    downloadFolder: string
+    mode: YouTubeMode
+    /** Max video height, or 0 for the best available. */
+    quality: number
+    videoFormat: YouTubeVideoFormat
+    audioFormat: YouTubeAudioFormat
+    /** Browser whose YouTube sign-in yt-dlp may borrow; '' = none. */
+    cookiesBrowser: YouTubeCookiesBrowser
+  }
   advanced: {
     ffmpegPath: string
     ffprobePath: string
+    ytdlpPath: string
     tempDirectory: string
     logLevel: 'debug' | 'info' | 'warning' | 'error'
     keepLogDays: number
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* YouTube downloads                                                   */
+/* ------------------------------------------------------------------ */
+
+export type YouTubeMode = 'video' | 'audio'
+export type YouTubeVideoFormat = 'mp4' | 'mkv' | 'webm'
+export type YouTubeAudioFormat = 'mp3' | 'm4a' | 'opus' | 'flac' | 'wav'
+/** '' = none; 'app' = the YouTube window built into GConverter. */
+export type YouTubeCookiesBrowser =
+  | ''
+  | 'app'
+  | 'chrome'
+  | 'edge'
+  | 'firefox'
+  | 'brave'
+  | 'opera'
+  | 'vivaldi'
+  | 'chromium'
+  | 'safari'
+
+export interface YtDlpInfo {
+  available: boolean
+  path: string
+  version?: string
+  source: 'bundled' | 'system' | 'custom' | 'missing'
+  error?: string
+}
+
+export interface YouTubeVideoInfo {
+  id: string
+  url: string
+  title: string
+  channel?: string
+  /** Seconds; 0 for live streams or unknown. */
+  duration: number
+  thumbnail?: string
+  /** Distinct video heights on offer, highest first. */
+  heights: number[]
+  isLive: boolean
+}
+
+export interface YouTubeRequest {
+  url: string
+  title?: string
+  thumbnail?: string
+  duration?: number
+  mode: YouTubeMode
+  quality: number
+  videoFormat: YouTubeVideoFormat
+  audioFormat: YouTubeAudioFormat
+  /** kbps for lossy audio; 0 = best. */
+  audioBitrate: number
+  outputFolder: string
+  /** Seconds; both set means "download only this part". */
+  sectionStart?: number
+  sectionEnd?: number
+  /** Re-encode around the cut points so the part starts exactly on time. */
+  exactCuts: boolean
+  cookiesBrowser: YouTubeCookiesBrowser
+}
+
+export type YouTubeStatus =
+  | 'queued'
+  | 'downloading'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export interface YouTubeDownload {
+  id: string
+  request: YouTubeRequest
+  status: YouTubeStatus
+  percent: number
+  speed?: string
+  eta?: string
+  outputPath?: string
+  error?: string
+  /** Lets the UI react to specific failures, e.g. offer the robot check. */
+  errorCode?: YouTubeErrorCode
+  createdAt: number
+  finishedAt?: number
+}
+
+export type YouTubeErrorCode =
+  | 'bot'
+  | 'age'
+  | 'cookies'
+  | 'private'
+  | 'geo'
+  | 'unavailable'
+  | 'network'
+  | 'outdated'
+  | 'invalid'
+  | 'generic'
+
+export type YouTubeInfoResult =
+  | { ok: true; info: YouTubeVideoInfo }
+  | { ok: false; error: string; code: YouTubeErrorCode }
+
+/** State of the cookies saved from GConverter's own YouTube window. */
+export interface YouTubeAuthStatus {
+  hasCookies: boolean
+  signedIn: boolean
+}
+
+export interface YouTubeVerifyResult extends YouTubeAuthStatus {
+  /** False when the window could not be opened (e.g. one is already open). */
+  ok: boolean
 }
 
 /* ------------------------------------------------------------------ */

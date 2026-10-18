@@ -496,6 +496,30 @@ export function SettingsPage(): React.JSX.Element {
               </div>
             </Field>
 
+            <Field label={t('settings.ytdlpPath')} hint={t('settings.ytdlpPathHint')}>
+              <div className="row gap-8">
+                <input
+                  className="input mono"
+                  style={{ fontSize: 12 }}
+                  placeholder="auto"
+                  value={settings.advanced.ytdlpPath}
+                  onChange={(e) => update((d) => { d.advanced.ytdlpPath = e.target.value })}
+                />
+                <button
+                  className="btn btn-secondary"
+                  onClick={() =>
+                    void api()
+                      .system.pickBinary('yt-dlp')
+                      .then((path) => {
+                        if (path) update((d) => { d.advanced.ytdlpPath = path })
+                      })
+                  }
+                >
+                  Browse
+                </button>
+              </div>
+            </Field>
+
             <button className="btn btn-secondary" onClick={() => void refreshSystem()}>
               {refreshing ? <Spinner size={15} /> : <RefreshCw size={15} />}
               {t('settings.redetect')}

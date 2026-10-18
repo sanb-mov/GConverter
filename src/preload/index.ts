@@ -7,7 +7,12 @@
  */
 
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import { IPC, type GConverterApi, type QueueEventPayload } from '@shared/ipc'
+import {
+  IPC,
+  type GConverterApi,
+  type QueueEventPayload,
+  type YouTubeEventPayload
+} from '@shared/ipc'
 import type { FFmpegInfo, HardwareCapabilities, LogRecord } from '@shared/models'
 
 const invoke = <T>(channel: string, ...args: unknown[]): Promise<T> =>
@@ -101,6 +106,25 @@ const api: GConverterApi = {
     copyText: (text) => invoke(IPC.copyText, text),
     saveTextFile: (defaultName, contents) => invoke(IPC.saveTextFile, defaultName, contents),
     fileUrl: (target) => invoke(IPC.fileUrl, target)
+  },
+  youtube: {
+    engine: () => invoke(IPC.youtubeEngine),
+    info: (url, cookiesBrowser) => invoke(IPC.youtubeInfo, url, cookiesBrowser),
+    start: (request) => invoke(IPC.youtubeStart, request),
+    list: () => invoke(IPC.youtubeList),
+    cancel: (id) => invoke(IPC.youtubeCancel, id),
+    retry: (id, cookiesBrowser) => invoke(IPC.youtubeRetry, id, cookiesBrowser),
+    authStatus: () => invoke(IPC.youtubeAuthStatus),
+    verify: (url, autoClose) => invoke(IPC.youtubeVerify, url, autoClose),
+    verifyFinish: () => invoke(IPC.youtubeVerifyFinish),
+    signOut: () => invoke(IPC.youtubeSignOut),
+    remove: (id) => invoke(IPC.youtubeRemove, id),
+    clearFinished: () => invoke(IPC.youtubeClearFinished),
+    onEvent: (handler) => {
+      const listener = (_event: unknown, payload: YouTubeEventPayload): void => handler(payload)
+      ipcRenderer.on(IPC.youtubeEvent, listener)
+      return () => ipcRenderer.removeListener(IPC.youtubeEvent, listener)
+    }
   },
   app: {
     info: () => invoke(IPC.appInfo)

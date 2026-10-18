@@ -2,13 +2,15 @@
 
 **Convierte lo que sea. Consérvalo todo.**
 
-Conversor de audio y vídeo de escritorio construido sobre FFmpeg, diseñado
-alrededor de una única regla: **nunca degradar la calidad en silencio**, y
-decirle siempre al usuario exactamente qué le está pasando a su archivo.
+Conversor de audio, vídeo e imágenes de escritorio construido sobre FFmpeg,
+diseñado alrededor de una única regla: **nunca degradar la calidad en
+silencio**, y decirle siempre al usuario exactamente qué le está pasando a su
+archivo. Incluye además un descargador de YouTube (vídeo, solo audio o solo
+un fragmento) basado en yt-dlp.
 
 ![Electron](https://img.shields.io/badge/Electron-43-47848F)
 ![TypeScript](https://img.shields.io/badge/TypeScript-7-3178C6)
-![Tests](https://img.shields.io/badge/tests-95%20pasando-22C77E)
+![Tests](https://img.shields.io/badge/tests-160%20pasando-22C77E)
 ![Idiomas](https://img.shields.io/badge/idiomas-ES%20%7C%20EN-5B8CFF)
 
 ---
@@ -37,7 +39,10 @@ decirle siempre al usuario exactamente qué le está pasando a su archivo.
 El mínimo de Node lo impone Vite 7, no la aplicación en sí.
 
 No hace falta instalar FFmpeg: se descarga automáticamente como dependencia
-de npm y se empaqueta con la aplicación.
+de npm y se empaqueta con la aplicación. Lo mismo con **yt-dlp** (el motor de
+la página de YouTube): `npm run ytdlp` descarga el binario oficial a `bin/`,
+comprobando su SHA-256, y los comandos `dist:*` lo hacen solos antes de
+empaquetar.
 
 Espacio en disco necesario: alrededor de **1,5 GB**. Solo `node_modules`
 ocupa unos **950 MB**, casi todo binarios:
@@ -75,6 +80,7 @@ generan, para no versionar binarios.
 ```bash
 npm run icons      # crea build/icon.png, icon-512.png e icon.ico desde icon.svg
 npm run fixtures   # crea archivos multimedia pequeños para los tests
+npm run ytdlp      # descarga yt-dlp a bin/ (necesario para probar YouTube en dev)
 ```
 
 `npm run icons` usa el propio Electron para rasterizar el SVG, así que no
@@ -94,15 +100,15 @@ reflejan al instante y los del proceso principal reinician la app sola.
 ```bash
 npm run build      # compila a out/ (sin empaquetar)
 npm run typecheck  # comprueba los tipos de los tres proyectos TS
-npm test           # ejecuta los 95 tests
+npm test           # ejecuta los 160 tests
 ```
 
 ### 5. Generar el instalador
 
 ```bash
-npm run dist:win     # Windows  → dist/GConverter Setup 1.0.0.exe   (NSIS, ~136 MB)
-npm run dist:linux   # Linux    → dist/GConverter-1.0.0.AppImage + .deb
-npm run dist:mac     # macOS    → dist/GConverter 1.0.0.dmg         (x64 + arm64)
+npm run dist:win     # Windows  → dist/GConverter Setup 1.1.0.exe   (NSIS)
+npm run dist:linux   # Linux    → dist/GConverter-1.1.0.AppImage + .deb
+npm run dist:mac     # macOS    → dist/GConverter 1.1.0.dmg         (x64 + arm64)
 ```
 
 El resultado queda en la carpeta `dist/`. También se genera
@@ -127,6 +133,7 @@ build de producción sin instalar nada.
 | `npm run test:watch` | Tests en modo observación |
 | `npm run icons` | Regenera los iconos desde `build/icon.svg` |
 | `npm run fixtures` | Regenera los archivos multimedia de prueba |
+| `npm run ytdlp` | Descarga yt-dlp a `bin/` (verificado por SHA-256) |
 | `npm run dist` | Instalador para la plataforma actual |
 | `npm run dist:win` / `:linux` / `:mac` | Instalador para una plataforma concreta |
 
@@ -223,6 +230,9 @@ Electron, y se podría sustituir por otro backend sin tocar la interfaz.
 | `core/queue/queueManager.ts` | Cola, concurrencia, reintentos e historial |
 | `core/hardware/detector.ts` | Detectar **y verificar** NVENC/AMF/QSV/VideoToolbox |
 | `core/automation/watcher.ts` | Carpetas vigiladas y acciones posteriores |
+| `core/youtube/ytdlp.ts` | Localizar yt-dlp, construir sus argumentos y explicar sus errores |
+| `core/youtube/downloader.ts` | Lista de descargas: progreso, fragmentos, cancelación y limpieza |
+| `core/youtube/auth.ts` | Ventana aislada de YouTube para el captcha «No soy un robot» |
 | `shared/formats.ts` | Registro de contenedores y códecs que gobierna la compatibilidad |
 | `shared/i18n.ts` | Diccionario ES/EN compartido por los dos procesos |
 
@@ -264,9 +274,9 @@ pensada para humanos, así que es fiable entre versiones de FFmpeg.
 npm test
 ```
 
-95 tests en cinco baterías. Las de integración y cola ejecutan **conversiones
-reales con FFmpeg** sobre los archivos generados y vuelven a analizar la
-salida:
+160 tests en siete baterías. Las de integración, cola e imágenes ejecutan
+**conversiones reales con FFmpeg** sobre los archivos generados y vuelven a
+analizar la salida:
 
 - remultiplexado sin pérdida MKV↔MP4↔MOV, verificado por hash del flujo
 - ida y vuelta WAV → FLAC → WAV comparada byte a byte
@@ -276,6 +286,8 @@ salida:
 - cancelación a mitad de codificación con limpieza del archivo parcial
 - concurrencia de la cola, reintentos, lotes y rutas de salida únicas
 - detección de hardware con verificación real
+- imágenes PNG → JPG/WebP/AVIF/BMP/TIFF/TGA/ICO/GIF, transparencia, tamaño y fotogramas de vídeo
+- argumentos de yt-dlp, fragmentos, validación de enlaces y de tiempos, cookies
 - cobertura de traducciones: falla si a un idioma le falta una clave
 
 ```bash

@@ -14,6 +14,7 @@ import {
   Cpu,
   Film,
   Gauge,
+  ImageIcon,
   Info,
   Music,
   Settings2,
@@ -22,13 +23,15 @@ import {
   Terminal,
   TriangleAlert
 } from 'lucide-react'
-import type { ConversionSettings, MediaFile, QualityMode } from '@shared/models'
+import type { ConversionProfile, ConversionSettings, MediaFile, QualityMode } from '@shared/models'
 import {
   AUDIO_CODECS,
   CONTAINERS,
   VIDEO_CODECS,
   getCodec,
-  qualityToValue
+  isImageTarget,
+  qualityToValue,
+  type ContainerDef
 } from '@shared/formats'
 import { api, useStore } from '../store/useStore'
 import { useT } from '../lib/i18n'
@@ -85,8 +88,7 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
     if (settings) return
     let cancelled = false
     void (async () => {
-      const target = file.hasVideo ? 'mp4' : 'mp3'
-      const smart = await api().conversion.smartSettings(file, target)
+      const smart = await api().conversion.smartSettings(file, defaultTargetFor(file))
       if (!cancelled) setFileSettings(file.id, smart)
     })()
     return () => {
@@ -197,6 +199,7 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
 
   const video = file.primaryVideo
   const audio = file.primaryAudio
+  const imageOutput = isImageTarget(container, file.isImage)
   const videoCodecDef = getCodec(settings.video.codec as string)
   const encoderDef = videoCodecDef?.encoders.find((e) => availableEncoders.includes(e.name))
   const isEncodingVideo = settings.video.codec !== 'copy' && settings.video.codec !== 'none'
@@ -226,12 +229,12 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
           <div className="row gap-16" style={{ flexWrap: 'wrap' }}>
             {video && (
               <SourceBlock
-                icon={<Film size={14} />}
-                tone="video"
+                icon={file.isImage ? <ImageIcon size={14} /> : <Film size={14} />}
+                tone={file.isImage ? 'image' : 'video'}
                 title={video.codec.toUpperCase()}
                 lines={[
                   formatResolution(video.width, video.height),
-                  formatFps(video.fps),
+                  file.isImage ? '' : formatFps(video.fps),
                   video.pixelFormat ?? '',
                   video.isHDR ? (video.hdrFormat ?? 'HDR') : ''
                 ]}
@@ -252,10 +255,10 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
             <SourceBlock
               icon={<Gauge size={14} />}
               tone="neutral"
-              title={formatDuration(file.duration)}
+              title={file.isImage ? formatBytes(file.size) : formatDuration(file.duration)}
               lines={[
-                formatBytes(file.size),
-                file.hasSubtitles
+                file.isImage ? '' : formatBytes(file.size),
+                file.isImage ? '' : file.hasSubtitles
                   ? t('editor.subtitleTracks', {
                       count: file.streams.filter((s) => s.kind === 'subtitle').length
                     })
@@ -297,16 +300,17 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
                     setFileSettings(file.id, smart)
                   })()
                 }}
-                options={CONTAINERS.map((c) => ({
+                options={formatOptionsFor(file).map((c) => ({
                   value: c.id,
                   label: losslessTargets.includes(c.id)
                     ? `${c.label}  ·  ${t('editor.losslessAvailable')}`
                     : c.label,
-                  group: c.kind === 'video' ? t('common.video') : t('common.audio')
+                  group: t(containerGroupKey(c, file.isImage))
                 }))}
               />
             </Field>
 
+            {!imageOutput && (
             <Field
               label={t('editor.quality')}
               hint={
@@ -330,9 +334,12 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
                 options={QUALITY_KEYS.map((q) => ({ value: q.value, label: t(q.key) }))}
               />
             </Field>
+            )}
           </div>
 
-          {container && container.videoCodecs.length > 0 && file.hasVideo && (
+          {imageOutput && <ImageOptions file={file} settings={settings} onUpdate={update} />}
+
+          {!imageOutput && container && container.videoCodecs.length > 0 && file.hasVideo && (
             <div className="field-row">
               <Field label={t('editor.videoCodec')}>
                 <Select
@@ -371,7 +378,7 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
             </div>
           )}
 
-          {(!file.hasVideo || container?.kind === 'audio') && (
+          {!imageOutput && (!file.hasVideo || container?.kind === 'audio') && (
             <Field label={t('editor.audioCodec')}>
               <Select
                 value={String(settings.audio.codec)}
@@ -385,7 +392,7 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
             </Field>
           )}
 
-          {file.hasVideo && container && container.videoCodecs.length > 0 && (
+          {!imageOutput && file.hasVideo && container && container.videoCodecs.length > 0 && (
             <div className="field-row">
               <Field
                 label={t('editor.resolution')}
@@ -451,6 +458,7 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
             </div>
           )}
 
+          {!imageOutput && (
           <div className="field-row">
             {file.hasSubtitles && (
               <Field label={t('editor.subtitles')}>
@@ -491,13 +499,16 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
               />
             </Field>
           </div>
+          )}
 
-          {settings.metadata.action === 'custom' && (
+          {!imageOutput && settings.metadata.action === 'custom' && (
             <MetadataEditor settings={settings} onUpdate={update} />
           )}
         </div>
 
         {/* ---------------------------- Advanced --------------------------- */}
+        {!imageOutput && (
+        <>
         <Disclosure title={t('editor.advVideo')} icon={<Film size={13} />}>
           {isEncodingVideo && encoderDef ? (
             <>
@@ -938,6 +949,8 @@ export function ConversionEditor({ file }: { file: MediaFile }): React.JSX.Eleme
             />
           </Field>
         </Disclosure>
+        </>
+        )}
       </div>
 
       {/* ---------------------------- Comparison --------------------------- */}
@@ -993,19 +1006,31 @@ function SourceBlock({
   lines
 }: {
   icon: React.JSX.Element
-  tone: 'video' | 'audio' | 'neutral'
+  tone: 'video' | 'audio' | 'image' | 'neutral'
   title: string
   lines: string[]
 }): React.JSX.Element {
   const t = useT()
   const color =
-    tone === 'video' ? 'var(--video-hue)' : tone === 'audio' ? 'var(--audio-hue)' : 'var(--text-muted)'
+    tone === 'video'
+      ? 'var(--video-hue)'
+      : tone === 'audio'
+        ? 'var(--audio-hue)'
+        : tone === 'image'
+          ? '#f59e0b'
+          : 'var(--text-muted)'
   return (
     <div style={{ minWidth: 150 }}>
       <div className="row gap-6" style={{ color, fontSize: 11, fontWeight: 650, letterSpacing: '0.06em' }}>
         {icon}
         <span style={{ textTransform: 'uppercase' }}>
-          {tone === 'neutral' ? t('editor.file') : tone === 'video' ? t('common.video') : t('common.audio')}
+          {tone === 'neutral'
+            ? t('editor.file')
+            : tone === 'video'
+              ? t('common.video')
+              : tone === 'image'
+                ? t('common.image')
+                : t('common.audio')}
         </span>
       </div>
       <div style={{ fontSize: 15, fontWeight: 600, marginTop: 6, letterSpacing: '-0.01em' }}>
@@ -1217,6 +1242,176 @@ function ComparisonPanel({ file }: { file: MediaFile }): React.JSX.Element | nul
           {t('editor.outputPath')} <span className="mono selectable">{preview.outputPath}</span>
         </div>
       </div>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/* Images                                                              */
+/* ------------------------------------------------------------------ */
+
+/** First format offered for a newly added file. */
+export function defaultTargetFor(file: MediaFile): string {
+  if (file.isImage) return file.extension === 'png' ? 'jpg' : 'png'
+  return file.hasVideo ? 'mp4' : 'mp3'
+}
+
+/**
+ * Formats worth offering: an image converts to other images (or a GIF);
+ * motion media gets everything, image formats included for frame grabs.
+ */
+export function formatOptionsFor(file: MediaFile): ContainerDef[] {
+  if (file.isImage) return CONTAINERS.filter((c) => c.kind === 'image' || c.id === 'gif')
+  return CONTAINERS
+}
+
+/** A preset whose output is a still image (built-in or custom). */
+export function isImageProfile(profile: ConversionProfile): boolean {
+  return CONTAINERS.find((c) => c.id === profile.settings.container.format)?.kind === 'image'
+}
+
+export function containerGroupKey(container: ContainerDef, sourceIsImage = false): string {
+  if (isImageTarget(container, sourceIsImage)) return 'common.image'
+  return container.kind === 'audio' ? 'common.audio' : 'common.video'
+}
+
+/** Encoders where a 1–100 quality value actually changes the output. */
+const QUALITY_CODECS = ['mjpeg', 'webp', 'av1']
+
+function ImageOptions({
+  file,
+  settings,
+  onUpdate
+}: {
+  file: MediaFile
+  settings: ConversionSettings
+  onUpdate: (mutate: (draft: ConversionSettings) => void) => void
+}): React.JSX.Element {
+  const t = useT()
+  const container = CONTAINERS.find((c) => c.id === settings.container.format)
+  const target = container?.videoCodecs[0] ?? ''
+  const image = settings.image ?? { quality: 90, background: '#ffffff', stripMetadata: false }
+  const video = file.primaryVideo
+  const hasQuality = QUALITY_CODECS.includes(target)
+
+  const setImage = (mutate: (draft: NonNullable<ConversionSettings['image']>) => void): void =>
+    onUpdate((draft) => {
+      draft.image ??= { ...image }
+      mutate(draft.image)
+    })
+
+  const dimension = (value: string): number | undefined => {
+    const n = Math.round(Number(value))
+    return value.trim() && Number.isFinite(n) && n > 0 ? Math.min(n, 16384) : undefined
+  }
+
+  return (
+    <div className="col gap-16">
+      <Field
+        label={hasQuality ? t('editor.imageQuality', { value: image.quality }) : t('editor.quality')}
+        hint={
+          !hasQuality
+            ? t('editor.imageQualityLossless')
+            : target === 'webp'
+              ? `${t('editor.imageQualityHint')} ${t('editor.imageWebpLossless')}`
+              : t('editor.imageQualityHint')
+        }
+      >
+        <input
+          type="range"
+          className="range"
+          min={1}
+          max={100}
+          disabled={!hasQuality}
+          value={image.quality}
+          onChange={(e) =>
+            setImage((draft) => {
+              draft.quality = Number(e.target.value)
+            })
+          }
+        />
+      </Field>
+
+      <div className="field-row">
+        <Field label={t('editor.imageWidth')}>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            placeholder={video?.width ? String(video.width) : 'auto'}
+            value={image.width ?? ''}
+            onChange={(e) =>
+              setImage((draft) => {
+                draft.width = dimension(e.target.value)
+              })
+            }
+          />
+        </Field>
+        <Field label={t('editor.imageHeight')}>
+          <input
+            className="input"
+            type="number"
+            min={1}
+            placeholder={video?.height ? String(video.height) : 'auto'}
+            value={image.height ?? ''}
+            onChange={(e) =>
+              setImage((draft) => {
+                draft.height = dimension(e.target.value)
+              })
+            }
+          />
+        </Field>
+      </div>
+      <div className="field-hint" style={{ marginTop: -10 }}>
+        {t('editor.imageSizeHint', { width: video?.width ?? '?', height: video?.height ?? '?' })}
+      </div>
+
+      <div className="field-row">
+        <Field label={t('editor.imageBackground')} hint={t('editor.imageBackgroundHint')}>
+          <input
+            className="input"
+            type="color"
+            style={{ height: 38, padding: 4 }}
+            disabled={container?.supportsAlpha}
+            value={image.background}
+            onChange={(e) =>
+              setImage((draft) => {
+                draft.background = e.target.value
+              })
+            }
+          />
+        </Field>
+
+        {!file.isImage && (
+          <Field label={t('editor.imageFrameAt')} hint={t('editor.imageFrameAtHint')}>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              max={file.duration || undefined}
+              step={0.1}
+              value={settings.trim?.start ?? 0}
+              onChange={(e) =>
+                onUpdate((draft) => {
+                  const start = Math.max(0, Number(e.target.value) || 0)
+                  draft.trim = start > 0 ? { start } : undefined
+                })
+              }
+            />
+          </Field>
+        )}
+      </div>
+
+      <Toggle
+        title={t('editor.imageStripMeta')}
+        description={t('editor.imageStripMetaHint')}
+        checked={image.stripMetadata}
+        onChange={(value) =>
+          setImage((draft) => {
+            draft.stripMetadata = value
+          })
+        }
+      />
     </div>
   )
 }

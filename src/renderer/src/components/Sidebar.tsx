@@ -9,7 +9,8 @@ import {
   Settings as SettingsIcon,
   Terminal,
   Cpu,
-  HelpCircle
+  HelpCircle,
+  MonitorPlay
 } from 'lucide-react'
 import { Logo } from './Logo'
 import { useStore, type PageId } from '../store/useStore'
@@ -25,6 +26,7 @@ interface NavEntry {
 const NAV: NavEntry[] = [
   { id: 'home', labelKey: 'nav.home', icon: <Home size={17} /> },
   { id: 'convert', labelKey: 'nav.convert', icon: <Repeat size={17} /> },
+  { id: 'youtube', labelKey: 'nav.youtube', icon: <MonitorPlay size={17} /> },
   { id: 'queue', labelKey: 'nav.queue', icon: <ListVideo size={17} /> },
   {
     id: 'presets',
@@ -51,6 +53,7 @@ export function Sidebar(): React.JSX.Element {
   const setPage = useStore((s) => s.setPage)
   const jobs = useStore((s) => s.jobs)
   const files = useStore((s) => s.files)
+  const downloads = useStore((s) => s.downloads)
   const ffmpeg = useStore((s) => s.ffmpeg)
   const hardware = useStore((s) => s.hardware)
 
@@ -58,8 +61,13 @@ export function Sidebar(): React.JSX.Element {
     (j) => j.status === 'pending' || j.status === 'running' || j.status === 'analyzing'
   ).length
 
+  const activeDownloads = downloads.filter(
+    (d) => d.status === 'queued' || d.status === 'downloading' || d.status === 'processing'
+  ).length
+
   const badgeFor = (id: PageId): number => {
     if (id === 'queue') return activeJobs
+    if (id === 'youtube') return activeDownloads
     if (id === 'convert') return files.length
     return 0
   }

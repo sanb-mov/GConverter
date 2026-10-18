@@ -21,10 +21,13 @@ import type {
   FFmpegInfo,
   HardwareCapabilities,
   HistoryEntry,
-  MediaFile
+  MediaFile,
+  YouTubeCookiesBrowser,
+  YouTubeRequest,
+  YtDlpInfo
 } from '@shared/models'
 import { IPC, type AppInfo, type PreviewResult } from '@shared/ipc'
-import { MEDIA_EXTENSIONS } from '@shared/formats'
+import { IMAGE_EXTENSIONS, MEDIA_EXTENSIONS } from '@shared/formats'
 
 import { logger } from './core/logging/logger'
 import { JsonStore } from './core/storage/jsonStore'
@@ -43,6 +46,10 @@ import {
   cleanupTempFiles,
   type AppDirectories
 } from './core/media/paths'
+import { resolveYtDlp } from './core/youtube/ytdlp'
+import { YouTubeDownloader } from './core/youtube/downloader'
+import { YouTubeAuth } from './core/youtube/auth'
+import { t as translate } from '@shared/i18n'
 
 /* ------------------------------------------------------------------ */
 /* Application state                                                   */
@@ -63,6 +70,9 @@ let probe: MediaProbe
 let engine: FFmpegConversionEngine
 let queue: QueueManager
 let automation: AutomationService
+let ytdlpInfo: YtDlpInfo = { available: false, path: '', source: 'missing' }
+let youtube: YouTubeDownloader
+let youtubeAuth: YouTubeAuth
 
 const getSettings = (): AppSettings => settingsStore.get()
 const getEncoders = (): string[] => ffmpegInfo?.encoders ?? []
@@ -223,8 +233,24 @@ async function bootstrap(): Promise<void> {
   const advanced = settingsStore.get().advanced
   ffmpegInfo = await resolveFFmpeg(advanced.ffmpegPath, advanced.ffprobePath)
 
-  probe = new MediaProbe(ffmpegInfo.ffprobePath)
+  probe = new MediaProbe(ffmpegInfo.ffprobePath, ffmpegInfo.ffmpegPath)
   engine = new FFmpegConversionEngine(ffmpegInfo.ffmpegPath)
+
+  ytdlpInfo = await resolveYtDlp(advanced.ytdlpPath)
+  youtubeAuth = new YouTubeAuth(
+    path.join(directories.root, 'youtube', 'cookies.txt'),
+    () => mainWindow,
+    () => translate(getSettings().general.language, 'yt.verifyWindowTitle')
+  )
+  youtube = new YouTubeDownloader({
+    getYtDlp: () => ytdlpInfo,
+    getFFmpegPath: () => ffmpegInfo.ffmpegPath,
+    getLang: () => getSettings().general.language,
+    // Electron doubles as the Node runtime YouTube's JS challenges need.
+    jsRuntimePath: process.execPath,
+    getCookiesFile: () => youtubeAuth.cookiesFile()
+  })
+  youtube.on('event', (event) => send(IPC.youtubeEvent, event))
 
   queue = new QueueManager({
     engine,
@@ -424,6 +450,7 @@ function registerIpc(): void {
         { name: 'Media files', extensions: MEDIA_EXTENSIONS },
         { name: 'Video', extensions: ['mp4', 'mkv', 'mov', 'avi', 'webm', 'ts', 'wmv', 'flv'] },
         { name: 'Audio', extensions: ['mp3', 'wav', 'flac', 'aac', 'm4a', 'ogg', 'opus'] },
+        { name: 'Images', extensions: IMAGE_EXTENSIONS },
         { name: 'All files', extensions: ['*'] }
       ]
     })
@@ -555,14 +582,15 @@ function registerIpc(): void {
     const advanced = getSettings().advanced
     clearFFmpegCache()
     ffmpegInfo = await resolveFFmpeg(advanced.ffmpegPath, advanced.ffprobePath, true)
-    probe.setPath(ffmpegInfo.ffprobePath)
+    probe.setPath(ffmpegInfo.ffprobePath, ffmpegInfo.ffmpegPath)
     engine.setFFmpegPath(ffmpegInfo.ffmpegPath)
+    ytdlpInfo = await resolveYtDlp(advanced.ytdlpPath)
     hardwarePromise = detectHardware(ffmpegInfo.ffmpegPath, ffmpegInfo.encoders, true)
     hardware = await hardwarePromise
     return { ffmpeg: ffmpegInfo, hardware }
   })
 
-  handle(IPC.pickBinary, async (kind: 'ffmpeg' | 'ffprobe') => {
+  handle(IPC.pickBinary, async (kind: 'ffmpeg' | 'ffprobe' | 'yt-dlp') => {
     if (!mainWindow) return null
     const result = await dialog.showOpenDialog(mainWindow, {
       title: `Select the ${kind} executable`,
@@ -590,10 +618,14 @@ function registerIpc(): void {
       previous.advanced.ffmpegPath !== next.advanced.ffmpegPath ||
       previous.advanced.ffprobePath !== next.advanced.ffprobePath
 
+    if (previous.advanced.ytdlpPath !== next.advanced.ytdlpPath) {
+      ytdlpInfo = await resolveYtDlp(next.advanced.ytdlpPath)
+    }
+
     if (pathsChanged) {
       clearFFmpegCache()
       ffmpegInfo = await resolveFFmpeg(next.advanced.ffmpegPath, next.advanced.ffprobePath, true)
-      probe.setPath(ffmpegInfo.ffprobePath)
+      probe.setPath(ffmpegInfo.ffprobePath, ffmpegInfo.ffmpegPath)
       engine.setFFmpegPath(ffmpegInfo.ffmpegPath)
       hardwarePromise = detectHardware(ffmpegInfo.ffmpegPath, ffmpegInfo.encoders, true)
       hardware = await hardwarePromise
@@ -724,6 +756,39 @@ function registerIpc(): void {
     return result.filePath
   })
 
+  /* ----------------------------- youtube ---------------------------- */
+
+  handle(IPC.youtubeEngine, () => ytdlpInfo)
+  handle(IPC.youtubeInfo, (url: string, cookiesBrowser: YouTubeCookiesBrowser) =>
+    youtube.fetchInfo(url, cookiesBrowser)
+  )
+  handle(IPC.youtubeStart, (request: YouTubeRequest) => {
+    const download = youtube.start(request)
+    // Remember the choices so the page opens with them next time.
+    settingsStore.update((draft) => {
+      draft.youtube.downloadFolder = download.request.outputFolder
+      draft.youtube.mode = download.request.mode
+      draft.youtube.quality = download.request.quality
+      draft.youtube.videoFormat = download.request.videoFormat
+      draft.youtube.audioFormat = download.request.audioFormat
+      draft.youtube.cookiesBrowser = download.request.cookiesBrowser
+    })
+    return download
+  })
+  handle(IPC.youtubeList, () => youtube.list())
+  handle(IPC.youtubeCancel, (id: string) => youtube.cancel(id))
+  handle(IPC.youtubeRetry, (id: string, cookiesBrowser?: YouTubeCookiesBrowser) =>
+    youtube.retry(id, cookiesBrowser)
+  )
+  handle(IPC.youtubeAuthStatus, () => youtubeAuth.status())
+  handle(IPC.youtubeVerify, (url?: string, autoClose?: boolean) =>
+    youtubeAuth.verify(url, autoClose === true)
+  )
+  handle(IPC.youtubeVerifyFinish, () => youtubeAuth.finish())
+  handle(IPC.youtubeSignOut, () => youtubeAuth.signOut())
+  handle(IPC.youtubeRemove, (id: string) => youtube.remove(id))
+  handle(IPC.youtubeClearFinished, () => youtube.clearFinished())
+
   /* ------------------------------- app ------------------------------ */
 
   handle(
@@ -773,6 +838,7 @@ app.on('before-quit', () => {
   // Never leave orphaned FFmpeg processes or half-written files behind.
   try {
     engine?.cancelAll()
+    youtube?.cancelAll()
     automation?.stopAll()
     settingsStore?.flush()
     historyStore?.flush()

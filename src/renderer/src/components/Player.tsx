@@ -46,6 +46,32 @@ export function Player({ file }: { file: MediaFile }): React.JSX.Element {
     setCurrent(value)
   }
 
+  // A still picture needs no transport controls, just the image itself.
+  if (file.isImage) {
+    return (
+      <div className="image-preview">
+        {error ? (
+          <div className="text-sm text-muted">{error}</div>
+        ) : (
+          url && (
+            <img
+              src={url}
+              alt={file.name}
+              onError={() =>
+                setError(
+                  t('player.cannotDecode', {
+                    codec: file.primaryVideo?.codec.toUpperCase() ?? file.extension.toUpperCase(),
+                    container: file.extension.toUpperCase()
+                  })
+                )
+              }
+            />
+          )
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="player">
       {error ? (

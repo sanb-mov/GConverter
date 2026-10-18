@@ -3,6 +3,7 @@ import { CheckCircle2, Info, X, AlertTriangle, HelpCircle } from 'lucide-react'
 import { Sidebar } from './components/Sidebar'
 import { HomePage } from './pages/HomePage'
 import { ConvertPage } from './pages/ConvertPage'
+import { YouTubePage } from './pages/YouTubePage'
 import { QueuePage } from './pages/QueuePage'
 import { PresetsPage } from './pages/PresetsPage'
 import { InspectorPage } from './pages/InspectorPage'
@@ -13,6 +14,7 @@ import { SettingsPage } from './pages/SettingsPage'
 import { HelpPage } from './pages/HelpPage'
 import { api, useStore, type PageId } from './store/useStore'
 import { useT } from './lib/i18n'
+import { t as translate } from '@shared/i18n'
 
 export default function App(): React.JSX.Element {
   const page = useStore((s) => s.page)
@@ -83,6 +85,62 @@ export default function App(): React.JSX.Element {
       }
     })
 
+    void api().youtube.list().then(store.setDownloads)
+
+    // Each download reports its own end once; toast on the transition only.
+    const offYouTube = api().youtube.onEvent((event) => {
+      const state = useStore.getState()
+      const before =
+        event.type === 'updated' ? state.downloads.find((d) => d.id === event.download.id) : undefined
+      state.applyYouTubeEvent(event)
+      if (event.type !== 'updated' || !before || before.status === event.download.status) return
+
+      const { download } = event
+      const t = (key: string): string => translate(state.settings?.general.language ?? 'en', key)
+      if (download.status === 'completed' && download.outputPath) {
+        const output = download.outputPath
+        state.pushToast({
+          kind: 'success',
+          title: t('yt.completedToast'),
+          message: output.split(/[\\/]/).pop(),
+          actions: [
+            { label: t('yt.open'), onClick: () => void api().shell.openPath(output) },
+            { label: t('yt.showInFolder'), onClick: () => void api().shell.revealPath(output) }
+          ]
+        })
+      } else if (download.status === 'failed') {
+        const code = download.errorCode
+        if (code === 'bot' || code === 'age') {
+          // Ask for the check right away; the YouTube page shows the dialog.
+          const request = { code, url: download.request.url, downloadId: download.id }
+          state.setYouTubeVerify(request)
+          if (state.page !== 'youtube') {
+            state.pushToast({
+              kind: 'error',
+              title: t('yt.verifyTitle'),
+              message: download.error,
+              actions: [
+                {
+                  label: t('yt.verifyAction'),
+                  onClick: () => {
+                    useStore.getState().setYouTubeVerify(request)
+                    useStore.getState().setPage('youtube')
+                  }
+                }
+              ]
+            })
+          }
+          return
+        }
+        state.pushToast({
+          kind: 'error',
+          title: t('yt.failedToast'),
+          message: download.error,
+          actions: [{ label: t('yt.downloads'), onClick: () => useStore.getState().setPage('youtube') }]
+        })
+      }
+    })
+
     const offLog = api().logs.onRecord((record) => useStore.getState().appendLog(record))
 
     const offSystem = api().system.onRefresh(({ ffmpeg, hardware }) => {
@@ -115,6 +173,7 @@ export default function App(): React.JSX.Element {
 
     return () => {
       offQueue()
+      offYouTube()
       offLog()
       offSystem()
     }
@@ -180,6 +239,7 @@ export default function App(): React.JSX.Element {
         <div className="page">
           {page === 'home' && <HomePage />}
           {page === 'convert' && <ConvertPage />}
+          {page === 'youtube' && <YouTubePage />}
           {page === 'queue' && <QueuePage />}
           {page === 'presets' && <PresetsPage />}
           {page === 'inspector' && <InspectorPage />}
@@ -210,6 +270,7 @@ function HelpButton(): React.JSX.Element | null {
     const map: Partial<Record<PageId, string>> = {
       home: 'home',
       convert: 'convert',
+      youtube: 'youtube',
       queue: 'queue',
       presets: 'presets',
       inspector: 'inspector',

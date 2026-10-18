@@ -23,6 +23,11 @@ extraResources:
   - from: docs/
     to: docs/
     filter: ['**/*.md']
+  # yt-dlp for the YouTube page; fetched into bin/ by `npm run ytdlp`.
+  # The resolver looks for it in resources/bin.
+  - from: bin/
+    to: bin/
+    filter: ['yt-dlp*']
 
 # ffprobe-static ships a binary for every platform (~335 MB in total).
 # Each target keeps only the one it can actually run.

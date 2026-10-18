@@ -13,7 +13,9 @@ import {
   Heart,
   HelpCircle,
   Home,
+  ImageIcon,
   Lightbulb,
+  MonitorPlay,
   Link as LinkIcon,
   ListVideo,
   Repeat,
@@ -41,7 +43,9 @@ const ICONS: Record<string, React.JSX.Element> = {
   clock: <Clock size={16} />,
   terminal: <Terminal size={16} />,
   settings: <SettingsIcon size={16} />,
-  help: <HelpCircle size={16} />
+  help: <HelpCircle size={16} />,
+  image: <ImageIcon size={16} />,
+  youtube: <MonitorPlay size={16} />
 }
 
 export function HelpPage(): React.JSX.Element {

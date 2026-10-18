@@ -19,8 +19,21 @@ import type {
   SubtitleStream,
   VideoStream
 } from '@shared/models'
-import { normalizeCodec } from '@shared/formats'
+import { isImageExtension, normalizeCodec } from '@shared/formats'
 import { logger } from '../logging/logger'
+
+/**
+ * A still picture: an image extension, or a GIF with a single frame. Animated
+ * GIFs and anything with sound stay motion media.
+ */
+export function detectImage(file: MediaFile): boolean {
+  if (!file.hasVideo || file.hasAudio) return false
+  if (isImageExtension(file.extension)) return true
+  if (file.extension === 'gif') {
+    return file.primaryVideo?.frameCount === 1 || file.duration < 0.15
+  }
+  return false
+}
 
 /* ---------------------- raw ffprobe JSON shapes ---------------------- */
 
@@ -221,10 +234,14 @@ function buildStream(raw: RawStream): AnyStream {
 /* ------------------------------- API -------------------------------- */
 
 export class MediaProbe {
-  constructor(private ffprobePath: string) {}
+  constructor(
+    private ffprobePath: string,
+    private ffmpegPath?: string
+  ) {}
 
-  setPath(ffprobePath: string): void {
+  setPath(ffprobePath: string, ffmpegPath?: string): void {
     this.ffprobePath = ffprobePath
+    if (ffmpegPath !== undefined) this.ffmpegPath = ffmpegPath
   }
 
   private run(args: string[], timeoutMs: number): Promise<string> {
@@ -296,6 +313,9 @@ export class MediaProbe {
       )
       raw = JSON.parse(stdout) as RawProbe
     } catch (err) {
+      const fallback = await this.probeImageWithFFmpeg(shell)
+      if (fallback) return fallback
+
       const message = err instanceof Error ? err.message : String(err)
       logger.warn('probe', `ffprobe failed for ${parsed.base}`, { message })
       return {
@@ -347,7 +367,53 @@ export class MediaProbe {
       file.error = 'No decodable streams found in this file'
     }
 
+    file.isImage = detectImage(file)
     return file
+  }
+
+  /**
+   * The bundled ffprobe predates AVIF, QOI and friends, while the bundled
+   * ffmpeg reads them fine. For image files ffprobe rejects, ask ffmpeg
+   * instead and build a minimal single-stream description from its banner.
+   */
+  private async probeImageWithFFmpeg(shell: MediaFile): Promise<MediaFile | null> {
+    if (!this.ffmpegPath || !isImageExtension(shell.extension)) return null
+    const stderr = await new Promise<string>((resolve) => {
+      // Without an output ffmpeg exits non-zero, but still prints the input.
+      execFile(
+        this.ffmpegPath!,
+        ['-hide_banner', '-i', shell.path],
+        { timeout: 30_000, windowsHide: true, maxBuffer: 4 * 1024 * 1024 },
+        (_error, _stdout, err) => resolve(String(err ?? ''))
+      )
+    })
+
+    const stream = /Stream #0:\d+.*?: Video: (\w+)[^\n]*?, (\w+)(?:\([^)]*\))?, (\d+)x(\d+)/.exec(stderr)
+    if (!stream) return null
+    const format = /Input #0, ([^\n]+?), from/.exec(stderr)?.[1] ?? shell.extension
+
+    const video: VideoStream = {
+      index: 0,
+      kind: 'video',
+      codec: normalizeCodec(stream[1]),
+      isDefault: true,
+      isForced: false,
+      width: Number(stream[3]),
+      height: Number(stream[4]),
+      pixelFormat: stream[2],
+      isHDR: false,
+      isAttachedPic: false,
+      frameCount: 1
+    }
+
+    return {
+      ...shell,
+      formatName: format,
+      streams: [video],
+      primaryVideo: video,
+      hasVideo: true,
+      isImage: true
+    }
   }
 
   /** Probe many files with bounded concurrency so large drops stay responsive. */

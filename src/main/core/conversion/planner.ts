@@ -22,7 +22,10 @@ import {
   CONTAINER_BY_ID,
   containerAcceptsCodec,
   getCodec,
-  normalizeCodec
+  isImageTarget,
+  normalizeCodec,
+  pixelFormatHasAlpha,
+  type ContainerDef
 } from '@shared/formats'
 import { pickHardwareEncoder } from '../hardware/detector'
 import { t as translate } from '@shared/i18n'
@@ -77,11 +80,25 @@ export function planConversion(
     }
   }
 
+  if (isImageTarget(container, source.isImage)) {
+    return planImage(source, settings, container, t)
+  }
+
   const videoStreams = source.streams.filter(
     (s): s is VideoStream => s.kind === 'video' && !s.isAttachedPic
   )
   const audioStreams = source.streams.filter((s): s is AudioStream => s.kind === 'audio')
   const subtitleStreams = source.streams.filter((s): s is SubtitleStream => s.kind === 'subtitle')
+
+  if (source.isImage && videoStreams.length > 0) {
+    // A still picture into a video/audio container: technically possible
+    // (a one-frame video) but almost never what the user meant.
+    warnings.push(
+      container.kind === 'audio'
+        ? t('warn.imageToAudio', { format: container.label })
+        : t('warn.imageToVideo', { format: container.label })
+    )
+  }
 
   let usesHardware = false
   let hardwareEncoder: string | undefined
@@ -288,6 +305,128 @@ export function planConversion(
     usesHardware,
     hardwareEncoder,
     ...estimate
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Still images                                                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Plan for writing a single still image. Every image conversion decodes
+ * and re-encodes one frame; it is only lossless when the target codec is.
+ */
+function planImage(
+  source: MediaFile,
+  settings: ConversionSettings,
+  container: ContainerDef,
+  t: (key: string, params?: Record<string, string | number>) => string
+): ConversionPlan {
+  const warnings: string[] = []
+  const streams: StreamPlan[] = []
+  const picture = source.streams.find(
+    (s): s is VideoStream => s.kind === 'video' && !s.isAttachedPic
+  ) ?? source.streams.find((s): s is VideoStream => s.kind === 'video')
+
+  if (!picture) {
+    return {
+      mode: 're-encode',
+      headline: t('plan.image.noPicture.headline'),
+      detail: t('plan.image.noPicture.detail', { format: container.label }),
+      losslessAvailable: false,
+      streams: source.streams.map((s) => ({
+        sourceIndex: s.index,
+        kind: s.kind,
+        action: 'drop' as const,
+        reason: t('reason.imageNoAudio')
+      })),
+      warnings: [],
+      usesHardware: false
+    }
+  }
+
+  const target = container.videoCodecs[0] ?? 'png'
+  const codec = getCodec(target)
+  const image = settings.image
+  const lossless = codec?.lossless === true || (target === 'webp' && (image?.quality ?? 0) >= 100)
+
+  streams.push({
+    sourceIndex: picture.index,
+    kind: 'video',
+    action: 'encode',
+    targetCodec: target,
+    reason: lossless
+      ? t('reason.imageLossless', { format: container.label })
+      : t('reason.imageLossy', { format: container.label, quality: image?.quality ?? 90 })
+  })
+  for (const stream of source.streams) {
+    if (stream.index === picture.index) continue
+    streams.push({
+      sourceIndex: stream.index,
+      kind: stream.kind,
+      action: 'drop',
+      reason: t('reason.imageNoAudio')
+    })
+  }
+
+  if (!source.isImage) warnings.push(t('warn.videoToImage', { format: container.label }))
+
+  if (pixelFormatHasAlpha(picture.pixelFormat) && !container.supportsAlpha) {
+    warnings.push(t('warn.alphaFlattened', { format: container.label, color: image?.background ?? '#ffffff' }))
+  }
+
+  const width = image?.width ?? picture.width
+  const height = image?.height ?? picture.height
+  if (container.maxDimension && Math.max(width, height) > container.maxDimension) {
+    warnings.push(t('warn.imageDownscaled', { format: container.label, size: container.maxDimension }))
+  }
+
+  const sizeChanged =
+    (image?.width !== undefined && image.width !== picture.width) ||
+    (image?.height !== undefined && image.height !== picture.height)
+
+  const mode: ConversionMode = lossless && !sizeChanged ? 'lossless-encode' : 're-encode'
+
+  return {
+    mode,
+    headline: mode === 'lossless-encode' ? t('plan.image.lossless.headline') : t('plan.image.lossy.headline'),
+    detail: t(mode === 'lossless-encode' ? 'plan.image.lossless.detail' : 'plan.image.lossy.detail', {
+      format: container.label
+    }),
+    losslessAvailable: false,
+    streams,
+    warnings,
+    usesHardware: false,
+    ...estimateImage(target, image?.quality ?? 90, width, height)
+  }
+}
+
+/** Rough bytes-per-pixel per format; good enough to warn about disk space. */
+function estimateImage(
+  target: string,
+  quality: number,
+  width: number,
+  height: number
+): { estimatedSize: number; estimatedSizeRange: [number, number]; estimatedDuration: number } {
+  const pixels = Math.max(1, width * height)
+  const q = Math.min(100, Math.max(1, quality)) / 100
+  const bytesPerPixel: Record<string, number> = {
+    mjpeg: 0.08 + 0.5 * q * q,
+    webp: q >= 1 ? 1.2 : 0.05 + 0.35 * q * q,
+    av1: 0.03 + 0.25 * q * q,
+    png: 1.5,
+    tiff: 3,
+    bmp: 3,
+    targa: 3,
+    gif: 0.6
+  }
+  const estimated = Math.round(pixels * (bytesPerPixel[target] ?? 1.5))
+  // Image content swings compression a lot: a flat graphic and a noisy
+  // photo of the same size can differ tenfold, so give a wide range.
+  return {
+    estimatedSize: estimated,
+    estimatedSizeRange: [Math.round(estimated / 3), Math.round(estimated * 2)],
+    estimatedDuration: target === 'av1' ? 3 : 1
   }
 }
 
@@ -608,7 +747,8 @@ function decideAudio(
  */
 export function canRemux(source: MediaFile, containerFormat: string): boolean {
   const container = CONTAINER_BY_ID.get(containerFormat)
-  if (!container) return false
+  // Writing an image always re-encodes the frame; there is no "remux".
+  if (!container || container.kind === 'image' || source.isImage) return false
 
   const video = source.streams.filter(
     (s): s is VideoStream => s.kind === 'video' && !s.isAttachedPic

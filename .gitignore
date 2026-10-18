@@ -11,6 +11,9 @@ Thumbs.db
 # Generated test media — recreate with: npm run fixtures
 tests/fixtures/media/
 
+# yt-dlp binary — download with: npm run ytdlp (done automatically by dist:*)
+bin/
+
 # Generated icons — recreate with: npm run icons
 build/icon.png
 build/icon-512.png

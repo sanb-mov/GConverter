@@ -16,13 +16,20 @@ import type {
   HardwareCapabilities,
   HistoryEntry,
   LogRecord,
-  MediaFile
+  MediaFile,
+  YouTubeDownload
 } from '@shared/models'
-import type { AppInfo, PreviewResult, QueueEventPayload } from '@shared/ipc'
+import type {
+  AppInfo,
+  PreviewResult,
+  QueueEventPayload,
+  YouTubeEventPayload
+} from '@shared/ipc'
 
 export type PageId =
   | 'home'
   | 'convert'
+  | 'youtube'
   | 'queue'
   | 'presets'
   | 'inspector'
@@ -31,6 +38,15 @@ export type PageId =
   | 'logs'
   | 'settings'
   | 'help'
+
+export interface YouTubeVerifyRequest {
+  /** Why: the robot check, or a video that needs a signed-in (adult) account. */
+  code: 'bot' | 'age'
+  /** The video that was refused; the window opens on it. */
+  url?: string
+  /** Set when a download failed; it is retried after verifying. */
+  downloadId?: string
+}
 
 export interface Toast {
   id: string
@@ -72,6 +88,14 @@ interface State {
   queuePaused: boolean
   setQueue: (jobs: ConversionJob[], running: boolean, paused: boolean) => void
   applyQueueEvent: (event: QueueEventPayload) => void
+
+  /* YouTube downloads (newest first, mirrored from the main process) */
+  downloads: YouTubeDownload[]
+  setDownloads: (downloads: YouTubeDownload[]) => void
+  applyYouTubeEvent: (event: YouTubeEventPayload) => void
+  /** YouTube asked for the robot check / sign-in; the YouTube page shows it. */
+  youtubeVerify: YouTubeVerifyRequest | null
+  setYouTubeVerify: (request: YouTubeVerifyRequest | null) => void
 
   /* reference data */
   profiles: ConversionProfile[]
@@ -183,6 +207,27 @@ export const useStore = create<State>((set, get) => ({
         break
       case 'queue-state':
         set({ queueRunning: event.running, queuePaused: event.paused })
+        break
+    }
+  },
+
+  downloads: [],
+  setDownloads: (downloads) => set({ downloads }),
+  youtubeVerify: null,
+  setYouTubeVerify: (youtubeVerify) => set({ youtubeVerify }),
+  applyYouTubeEvent: (event) => {
+    switch (event.type) {
+      case 'added':
+        set((state) => ({ downloads: [event.download, ...state.downloads] }))
+        break
+      case 'updated':
+        // An update for a row the user already removed is simply dropped.
+        set((state) => ({
+          downloads: state.downloads.map((d) => (d.id === event.download.id ? event.download : d))
+        }))
+        break
+      case 'removed':
+        set((state) => ({ downloads: state.downloads.filter((d) => d.id !== event.id) }))
         break
     }
   },
